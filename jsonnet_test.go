@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+// Demo for the README.
+func Test_Demo(t *testing.T) {
+	vm := jsonnet.Make()
+	vm.ExtVar("color", "purple")
+
+	x, err := vm.EvaluateSnippet(`Test_Demo`, `"dark " + std.extVar("color")`)
+	if err != nil {
+		panic(err)
+	}
+	if x != "\"dark purple\"\n" {
+		panic("fail: we got " + x)
+	}
+	vm.Destroy()
+}
+
+// importFunc returns a couple of hardwired responses.
 func importFunc(base, rel string) (result string, err error) {
 	if rel == "alien.conf" {
 		return `{ type: "alien", origin: "Ork", name: "Mork" }`, nil
@@ -18,6 +34,7 @@ func importFunc(base, rel string) (result string, err error) {
 	return "", errors.New(fmt.Sprintf("Cannot import %q", rel))
 }
 
+// check there is no err, and a == b.
 func check(t *testing.T, err error, a, b string) {
 	if err != nil {
 		t.Errorf("got error: %q", err.Error())
@@ -62,7 +79,7 @@ func Test_FileScript(t *testing.T) {
 `)
 }
 
-func Test_Christmas(t *testing.T) {
+func Test_Misc(t *testing.T) {
 	vm := jsonnet.Make()
 
 	vm.MaxStack(10)
@@ -70,7 +87,7 @@ func Test_Christmas(t *testing.T) {
 	vm.GcMinObjects(10)
 	vm.GcGrowthTrigger(2.0)
 
-	x, err := vm.EvaluateSnippet("Christmas", `
+	x, err := vm.EvaluateSnippet("Misc", `
     local a = import "test2.j";
     a.awk + a.shell`)
 	check(t, err, x, `"/usr/bin/awk/bin/csh"`+"\n")
