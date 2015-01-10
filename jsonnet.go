@@ -11,6 +11,7 @@ Suggestions:
     cp libjsonnet.h /usr/local/include/
 */
 package jsonnet
+
 // By Henry Strickland <@yak.net:strick>
 
 /*
