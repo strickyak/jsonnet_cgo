@@ -2,25 +2,18 @@
 jsonnet is a simple Go wrapper for the JSonnet VM.
 
 See http://jsonnet.org/
-
-Suggestions:
-    go clone https://github.com/google/jsonnet.git
-    cd jsonnet
-    make libjsonnet.so
-    cp libjsonnet.so /usr/local/lib/
-    cp include/libjsonnet.h /usr/local/include/
 */
 package jsonnet
 
 // By Henry Strickland <@yak.net:strick>
+// Made self-contained by Marko Mikulicic <mkm@bitnami.com>
 
 /*
 #include <memory.h>
 #include <string.h>
 #include <stdio.h>
-#include <libjsonnet.h>
 #include "bridge.h"
-#cgo LDFLAGS: -ljsonnet
+#cgo CXXFLAGS: -std=c++0x -O3
 */
 import "C"
 
