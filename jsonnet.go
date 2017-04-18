@@ -1,26 +1,19 @@
 /*
 jsonnet is a simple Go wrapper for the JSonnet VM.
 
-See http://google.github.io/jsonnet/doc/index.html
-
-Suggestions:
-    go clone https://github.com/google/jsonnet.git
-    cd jsonnet
-    make libjsonnet.so
-    cp libjsonnet.so /usr/local/lib/
-    cp libjsonnet.h /usr/local/include/
+See http://jsonnet.org/
 */
 package jsonnet
 
 // By Henry Strickland <@yak.net:strick>
+// Made self-contained by Marko Mikulicic <mkm@bitnami.com>
 
 /*
 #include <memory.h>
 #include <string.h>
 #include <stdio.h>
-#include <libjsonnet.h>
 #include "bridge.h"
-#cgo LDFLAGS: -ljsonnet
+#cgo CXXFLAGS: -std=c++0x -O3
 */
 import "C"
 
@@ -29,7 +22,7 @@ import (
 	"unsafe"
 )
 
-type ImportCallback func(base, rel string) (result string, err error)
+type ImportCallback func(base, rel string) (result string, path string, err error)
 
 type VM struct {
 	guts           *C.struct_JsonnetVm
@@ -37,15 +30,21 @@ type VM struct {
 }
 
 //export go_call_import
-func go_call_import(vmPtr unsafe.Pointer, base, rel *C.char, okPtr *C.int) *C.char {
+func go_call_import(vmPtr unsafe.Pointer, base, rel *C.char, pathPtr **C.char, okPtr *C.int) *C.char {
 	vm := (*VM)(vmPtr)
-	result, err := vm.importCallback(C.GoString(base), C.GoString(rel))
+	result, path, err := vm.importCallback(C.GoString(base), C.GoString(rel))
 	if err != nil {
 		*okPtr = C.int(0)
 		return C.CString(err.Error())
 	}
+	*pathPtr = C.CString(path)
 	*okPtr = C.int(1)
 	return C.CString(result)
+}
+
+// Evaluate a file containing Jsonnet code, return a JSON string.
+func Version() string {
+	return C.GoString(C.jsonnet_version())
 }
 
 // Create a new Jsonnet virtual machine.
@@ -91,9 +90,19 @@ func (vm *VM) ExtVar(key, val string) {
 	C.jsonnet_ext_var(vm.guts, C.CString(key), C.CString(val))
 }
 
-// If set to 1, will emit the Jsonnet input after parsing / desugaring.
-func (vm *VM) DebugAst(v int) {
-	C.jsonnet_debug_ast(vm.guts, C.int(v))
+// Bind a Jsonnet external var to the given Jsonnet code.
+func (vm *VM) ExtCode(key, val string) {
+	C.jsonnet_ext_code(vm.guts, C.CString(key), C.CString(val))
+}
+
+// Bind a Jsonnet top-level argument to the given value.
+func (vm *VM) TlaVar(key, val string) {
+	C.jsonnet_tla_var(vm.guts, C.CString(key), C.CString(val))
+}
+
+// Bind a Jsonnet top-level argument to the given Jsonnet code.
+func (vm *VM) TlaCode(key, val string) {
+	C.jsonnet_tla_code(vm.guts, C.CString(key), C.CString(val))
 }
 
 // Set the maximum stack depth.
@@ -115,3 +124,26 @@ func (vm *VM) GcMinObjects(v uint) {
 func (vm *VM) GcGrowthTrigger(v float64) {
 	C.jsonnet_gc_growth_trigger(vm.guts, C.double(v))
 }
+
+// Expect a string as output and don't JSON encode it.
+func (vm *VM) StringOutput(v bool) {
+	if v {
+		C.jsonnet_string_output(vm.guts, C.int(1))
+	} else {
+		C.jsonnet_string_output(vm.guts, C.int(0))
+	}
+}
+
+// Add to the default import callback's library search path.
+func (vm *VM) JpathAdd(path string) {
+	C.jsonnet_jpath_add(vm.guts, C.CString(path))
+}
+
+/* The following are not implemented because they are trivial to implement in Go on top of the
+ * existing API by parsing and post-processing the JSON output by regular evaluation.
+ *
+ * jsonnet_evaluate_file_multi
+ * jsonnet_evaluate_snippet_multi
+ * jsonnet_evaluate_file_stream
+ * jsonnet_evaluate_snippet_stream
+ */

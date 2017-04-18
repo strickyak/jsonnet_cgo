@@ -20,17 +20,17 @@ import (
 	"strings"
 )
 
-var debug_ast = flag.Int(
-	"debug_ast", 0,
-	"If set to 1, will emit the Jsonnet input after parsing / desugaring.")
+var stringOutput = flag.Bool(
+	"string_output", false,
+	"If set, will expect a string and output it verbatim")
 
-func importFunc(base, rel string) (result string, err error) {
+func importFunc(base, rel string) (result string, path string, err error) {
 	filename := filepath.Join(base, rel)
 	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return string(contents), nil
+	return string(contents), filename, nil
 }
 
 func main() {
@@ -38,8 +38,8 @@ func main() {
 	vm := jsonnet.Make()
 	vm.ImportCallback(importFunc)
 
-	if debug_ast != nil {
-		vm.DebugAst(*debug_ast)
+	if stringOutput != nil {
+		vm.StringOutput(*stringOutput)
 	}
 
 	args := flag.Args()

@@ -24,14 +24,14 @@ func Test_Demo(t *testing.T) {
 }
 
 // importFunc returns a couple of hardwired responses.
-func importFunc(base, rel string) (result string, err error) {
+func importFunc(base, rel string) (result string, path string, err error) {
 	if rel == "alien.conf" {
-		return `{ type: "alien", origin: "Ork", name: "Mork" }`, nil
+		return `{ type: "alien", origin: "Ork", name: "Mork" }`, "alien.conf", nil
 	}
 	if rel == "human.conf" {
-		return `{ type: "human", origin: "Earth", name: "Mendy" }`, nil
+		return `{ type: "human", origin: "Earth", name: "Mendy" }`, "human.conf", nil
 	}
-	return "", errors.New(fmt.Sprintf("Cannot import %q", rel))
+	return "", "", errors.New(fmt.Sprintf("Cannot import %q", rel))
 }
 
 // check there is no err, and a == b.
@@ -45,16 +45,29 @@ func check(t *testing.T, err error, a, b string) {
 }
 
 func Test_Simple(t *testing.T) {
+
+	// Each time there's a new version, this will force an update to this code.
+	check(t, nil, jsonnet.Version(), `v0.9.3`)
+
 	vm := jsonnet.Make()
+	vm.TlaVar("color", "purple")
+	vm.TlaVar("size", "XXL")
+	vm.TlaCode("gooselevel", "1234 * 10 + 5")
 	vm.ExtVar("color", "purple")
 	vm.ExtVar("size", "XXL")
-	vm.ExtVar("gooselevel", "12345")
+	vm.ExtCode("gooselevel", "1234 * 10 + 5")
 	vm.ImportCallback(importFunc)
 
 	x, err := vm.EvaluateSnippet(`test1`, `20 + 22`)
 	check(t, err, x, `42`+"\n")
+	x, err = vm.EvaluateSnippet(`test2`, `function(color, size, gooselevel) color`)
+	check(t, err, x, `"purple"`+"\n")
 	x, err = vm.EvaluateSnippet(`test2`, `std.extVar("color")`)
 	check(t, err, x, `"purple"`+"\n")
+	vm.StringOutput(true)
+	x, err = vm.EvaluateSnippet(`test2`, `"whee"`)
+	check(t, err, x, `whee`+"\n")
+	vm.StringOutput(false)
 	x, err = vm.EvaluateSnippet(`test3`, `
     local a = import "alien.conf";
     local b = import "human.conf";
@@ -91,12 +104,4 @@ func Test_Misc(t *testing.T) {
     local a = import "test2.j";
     a.awk + a.shell`)
 	check(t, err, x, `"/usr/bin/awk/bin/csh"`+"\n")
-}
-
-func Test_AST(t *testing.T) {
-	vm := jsonnet.Make()
-	vm.DebugAst(1)
-
-	x, err := vm.EvaluateSnippet("AST", "local a = 3 + 5; a + 10")
-	check(t, err, x, `(local a = ((3) + (5)); ((a) + (10)))`+"\n")
 }
