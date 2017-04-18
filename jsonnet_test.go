@@ -47,7 +47,7 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, jsonnet.Version(), `v0.8.7`)
+	check(t, nil, jsonnet.Version(), `v0.9.3`)
 
 	vm := jsonnet.Make()
 	vm.TlaVar("color", "purple")
