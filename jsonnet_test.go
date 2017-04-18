@@ -66,7 +66,7 @@ func Test_Simple(t *testing.T) {
 	check(t, err, x, `"purple"`+"\n")
 	vm.StringOutput(true)
 	x, err = vm.EvaluateSnippet(`test2`, `"whee"`)
-	check(t, err, x, `whee` + "\n")
+	check(t, err, x, `whee`+"\n")
 	vm.StringOutput(false)
 	x, err = vm.EvaluateSnippet(`test3`, `
     local a = import "alien.conf";
