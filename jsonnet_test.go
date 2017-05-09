@@ -114,6 +114,11 @@ func Test_FormatFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	filename := f.Name()
+	defer func() {
+		f.Close()
+		os.Remove(filename)
+	}()
+
 	data := `{
     "quoted": "keys",
     "notevaluated": 20 + 22,
@@ -122,10 +127,6 @@ func Test_FormatFile(t *testing.T) {
 	if err := ioutil.WriteFile(filename, []byte(data), 0644); err != nil {
 		t.Fatalf("WriteFile %s: %v", filename, err)
 	}
-	defer func() {
-		f.Close()
-		os.Remove(filename)
-	}()
 
 	vm := jsonnet.Make()
 	result, err := vm.FormatFile(filename)
@@ -162,12 +163,12 @@ func Test_FormatIndent(t *testing.T) {
 `
 
 	vm := jsonnet.Make()
-	vm.FormatIndent(4)
+	vm.FormatIndent(1)
 	result, err := vm.FormatSnippet("testfoo", data)
 
 	check(t, err, result, `{
-    quoted: "keys",
-    notevaluated: 20 + 22,
-    trailing: "comma" }
+ quoted: "keys",
+ notevaluated: 20 + 22,
+ trailing: "comma" }
 `)
 }
