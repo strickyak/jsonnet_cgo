@@ -153,3 +153,21 @@ func Test_FormatSnippet(t *testing.T) {
     trailing: "comma" }
 `)
 }
+
+func Test_FormatIndent(t *testing.T) {
+	data := `{
+  "quoted": "keys",
+ "notevaluated": 20 + 22,
+   "trailing": "comma",}
+`
+
+	vm := jsonnet.Make()
+	vm.FormatIndent(4)
+	result, err := vm.FormatSnippet("testfoo", data)
+
+	check(t, err, result, `{
+    quoted: "keys",
+    notevaluated: 20 + 22,
+    trailing: "comma" }
+`)
+}

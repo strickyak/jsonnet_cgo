@@ -89,6 +89,11 @@ func (vm *VM) FormatFile(filename string) (string, error) {
 	return z, nil
 }
 
+// Indentation level when reformatting (number of spaces)
+func (vm *VM) FormatIndent(n int) {
+	C.jsonnet_fmt_indent(vm.guts, C.int(n))
+}
+
 // Format a string containing Jsonnet code, return a JSON string.
 func (vm *VM) FormatSnippet(filename, snippet string) (string, error) {
 	var e C.int
