@@ -79,6 +79,26 @@ func (vm *VM) EvaluateSnippet(filename, snippet string) (string, error) {
 	return z, nil
 }
 
+// Format a file containing Jsonnet code, return a JSON string.
+func (vm *VM) FormatFile(filename string) (string, error) {
+	var e C.int
+	z := C.GoString(C.jsonnet_fmt_file(vm.guts, C.CString(filename), &e))
+	if e != 0 {
+		return "", errors.New(z)
+	}
+	return z, nil
+}
+
+// Format a string containing Jsonnet code, return a JSON string.
+func (vm *VM) FormatSnippet(filename, snippet string) (string, error) {
+	var e C.int
+	z := C.GoString(C.jsonnet_fmt_snippet(vm.guts, C.CString(filename), C.CString(snippet), &e))
+	if e != 0 {
+		return "", errors.New(z)
+	}
+	return z, nil
+}
+
 // Override the callback used to locate imports.
 func (vm *VM) ImportCallback(f ImportCallback) {
 	vm.importCallback = f

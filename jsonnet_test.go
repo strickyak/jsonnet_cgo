@@ -5,6 +5,8 @@ import jsonnet "github.com/strickyak/jsonnet_cgo"
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -47,7 +49,7 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, jsonnet.Version(), `v0.8.7`)
+	check(t, nil, jsonnet.Version(), `v0.9.3`)
 
 	vm := jsonnet.Make()
 	vm.TlaVar("color", "purple")
@@ -66,7 +68,7 @@ func Test_Simple(t *testing.T) {
 	check(t, err, x, `"purple"`+"\n")
 	vm.StringOutput(true)
 	x, err = vm.EvaluateSnippet(`test2`, `"whee"`)
-	check(t, err, x, `whee` + "\n")
+	check(t, err, x, `whee`+"\n")
 	vm.StringOutput(false)
 	x, err = vm.EvaluateSnippet(`test3`, `
     local a = import "alien.conf";
@@ -104,4 +106,50 @@ func Test_Misc(t *testing.T) {
     local a = import "test2.j";
     a.awk + a.shell`)
 	check(t, err, x, `"/usr/bin/awk/bin/csh"`+"\n")
+}
+
+func Test_FormatFile(t *testing.T) {
+	f, err := ioutil.TempFile("", "jsonnet-fmt-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filename := f.Name()
+	data := `{
+    "quoted": "keys",
+    "notevaluated": 20 + 22,
+    "trailing": "comma",}
+`
+	if err := ioutil.WriteFile(filename, []byte(data), 0644); err != nil {
+		t.Fatalf("WriteFile %s: %v", filename, err)
+	}
+	defer func() {
+		f.Close()
+		os.Remove(filename)
+	}()
+
+	vm := jsonnet.Make()
+	result, err := vm.FormatFile(filename)
+
+	check(t, err, result, `{
+    quoted: "keys",
+    notevaluated: 20 + 22,
+    trailing: "comma" }
+`)
+}
+
+func Test_FormatSnippet(t *testing.T) {
+	data := `{
+    "quoted": "keys",
+    "notevaluated": 20 + 22,
+    "trailing": "comma",}
+`
+
+	vm := jsonnet.Make()
+	result, err := vm.FormatSnippet("testfoo", data)
+
+	check(t, err, result, `{
+    quoted: "keys",
+    notevaluated: 20 + 22,
+    trailing: "comma" }
+`)
 }
