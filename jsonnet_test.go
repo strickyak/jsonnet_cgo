@@ -5,6 +5,8 @@ import jsonnet "github.com/strickyak/jsonnet_cgo"
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -104,4 +106,69 @@ func Test_Misc(t *testing.T) {
     local a = import "test2.j";
     a.awk + a.shell`)
 	check(t, err, x, `"/usr/bin/awk/bin/csh"`+"\n")
+}
+
+func Test_FormatFile(t *testing.T) {
+	f, err := ioutil.TempFile("", "jsonnet-fmt-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filename := f.Name()
+	defer func() {
+		f.Close()
+		os.Remove(filename)
+	}()
+
+	data := `{
+    "quoted": "keys",
+    "notevaluated": 20 + 22,
+    "trailing": "comma",}
+`
+	if err := ioutil.WriteFile(filename, []byte(data), 0644); err != nil {
+		t.Fatalf("WriteFile %s: %v", filename, err)
+	}
+
+	vm := jsonnet.Make()
+	result, err := vm.FormatFile(filename)
+
+	check(t, err, result, `{
+    quoted: "keys",
+    notevaluated: 20 + 22,
+    trailing: "comma" }
+`)
+}
+
+func Test_FormatSnippet(t *testing.T) {
+	data := `{
+    "quoted": "keys",
+    "notevaluated": 20 + 22,
+    "trailing": "comma",}
+`
+
+	vm := jsonnet.Make()
+	result, err := vm.FormatSnippet("testfoo", data)
+
+	check(t, err, result, `{
+    quoted: "keys",
+    notevaluated: 20 + 22,
+    trailing: "comma" }
+`)
+}
+
+func Test_FormatIndent(t *testing.T) {
+	data := `{
+  "quoted": "keys",
+ "notevaluated": 20 + 22,
+   "trailing": "comma",}
+`
+
+	vm := jsonnet.Make()
+	vm.FormatIndent(1)
+	result, err := vm.FormatSnippet("testfoo", data)
+
+	check(t, err, result, `{
+ quoted: "keys",
+ notevaluated: 20 + 22,
+ trailing: "comma" }
+`)
 }
