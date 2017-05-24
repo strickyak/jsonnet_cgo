@@ -50,7 +50,7 @@ func main() {
 	for i := 1; i < len(args); i++ {
 		kv := strings.SplitN(args[i], "=", 2)
 		if len(kv) != 2 {
-			log.Fatalf("Error in jsonnet_main: Expected arg to be 'key=value': %s", args[i])
+			log.Fatalf("Error in jsonnet_main: Expected arg to be 'key=value': %q", args[i])
 		}
 		vm.ExtVar(kv[0], kv[1])
 	}
