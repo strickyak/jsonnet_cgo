@@ -1,13 +1,16 @@
 package jsonnet_test
 
-import jsonnet "github.com/strickyak/jsonnet_cgo"
+import jsonnet "github.com/mmikulicic/jsonnet_cgo"
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+	"text/template"
 )
 
 // Demo for the README.
@@ -170,5 +173,80 @@ func Test_FormatIndent(t *testing.T) {
  quoted: "keys",
  notevaluated: 20 + 22,
  trailing: "comma" }
+`)
+}
+
+func Test_NativeCallbackSimple(t *testing.T) {
+	do_foo := func(params string) (string, error) {
+		return "Foo", nil
+	}
+	do_bar := func(params string) (string, error) {
+		return "Bar", nil
+	}
+
+	vm := jsonnet.Make()
+	vm.NativeCallback("call_it_foo", do_foo, []string{"param"})
+	vm.NativeCallback("call_it_bar", do_bar, []string{"param"})
+	data := `local call_it_foo(vars) = std.native("call_it_foo")(vars);
+	local call_it_bar(vars) = std.native("call_it_bar")(vars);
+	{
+		footest: call_it_foo(""),
+		bartest: call_it_bar(""),
+	}`
+
+	result, err := vm.EvaluateSnippet("testfoo", data)
+
+	check(t, err, result, `{
+   "bartest": "Bar",
+   "footest": "Foo"
+}
+`)
+}
+
+func expandTemplate(paramsJSON string) (string, error) {
+	var params struct {
+		Template string `json: "template"`
+		Context  interface{}
+	}
+	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+		return "", err
+	}
+
+	tmpl, err := template.New("Test").Parse(params.Template)
+	if err != nil {
+		return "", err
+	}
+
+	var result bytes.Buffer
+	if err := tmpl.Execute(&result, params.Context); err != nil {
+		return "", err
+	}
+	return result.String(), nil
+}
+
+func Test_NativeCallbackStructured(t *testing.T) {
+
+	vm := jsonnet.Make()
+	vm.NativeCallback("expand_template", expandTemplate, []string{"paramsJSON"})
+	data := `local expand_template(template, vars) = std.native("expand_template")(
+		std.toString({template: template, context: vars}));
+		local template_1 = "Hello {{ .FirstName }} {{ .LastName }}.";
+		{
+			footest: expand_template(template_1, {
+				FirstName: "Name1",
+				LastName: "Name2",
+			}),
+			bartest: expand_template(template_1, {
+				FirstName: "Name3",
+				LastName: "Name4",
+			}),
+		}`
+
+	result, err := vm.EvaluateSnippet("testfoo", data)
+
+	check(t, err, result, `{
+   "bartest": "Hello Name3 Name4.",
+   "footest": "Hello Name1 Name2."
+}
 `)
 }
