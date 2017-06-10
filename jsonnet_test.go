@@ -177,10 +177,10 @@ func Test_FormatIndent(t *testing.T) {
 }
 
 func Test_NativeCallbackSimple(t *testing.T) {
-	do_foo := func(params string) (string, error) {
+	do_foo := func(params ...string) (string, error) {
 		return "Foo", nil
 	}
-	do_bar := func(params string) (string, error) {
+	do_bar := func(params ...string) (string, error) {
 		return "Bar", nil
 	}
 
@@ -203,40 +203,41 @@ func Test_NativeCallbackSimple(t *testing.T) {
 `)
 }
 
-func expandTemplate(paramsJSON string) (string, error) {
-	var params struct {
-		Template string `json: "template"`
-		Context  interface{}
-	}
-	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+// expandTemplate is an example native function which takes multiple params.
+func expandTemplate(params ...string) (string, error) {
+	templateText := params[0]
+	contextJSON := params[1]
+	var context interface{}
+	if err := json.Unmarshal([]byte(contextJSON), &context); err != nil {
 		return "", err
 	}
 
-	tmpl, err := template.New("Test").Parse(params.Template)
+	tmpl, err := template.New("Test").Parse(templateText)
 	if err != nil {
 		return "", err
 	}
 
 	var result bytes.Buffer
-	if err := tmpl.Execute(&result, params.Context); err != nil {
+	if err := tmpl.Execute(&result, context); err != nil {
 		return "", err
 	}
 	return result.String(), nil
 }
 
-func Test_NativeCallbackStructured(t *testing.T) {
+func Test_NativeCallbackStructuredInput(t *testing.T) {
 
 	vm := jsonnet.Make()
-	vm.NativeCallback("expand_template", expandTemplate, []string{"paramsJSON"})
+	vm.NativeCallback("expand_template", expandTemplate, []string{"template", "contextJSON"})
 	data := `local expand_template(template, vars) = std.native("expand_template")(
-		std.toString({template: template, context: vars}));
+		template, std.toString(vars));
 		local template_1 = "Hello {{ .FirstName }} {{ .LastName }}.";
+		local template_2 = "Guten Tag {{ .FirstName }} {{ .LastName }}.";
 		{
 			footest: expand_template(template_1, {
 				FirstName: "Name1",
 				LastName: "Name2",
 			}),
-			bartest: expand_template(template_1, {
+			bartest: expand_template(template_2, {
 				FirstName: "Name3",
 				LastName: "Name4",
 			}),
@@ -245,8 +246,28 @@ func Test_NativeCallbackStructured(t *testing.T) {
 	result, err := vm.EvaluateSnippet("testfoo", data)
 
 	check(t, err, result, `{
-   "bartest": "Hello Name3 Name4.",
+   "bartest": "Guten Tag Name3 Name4.",
    "footest": "Hello Name1 Name2."
 }
 `)
+}
+
+func Test_NativeCallbackError(t *testing.T) {
+	vm := jsonnet.Make()
+	vm.NativeCallback("expand_template", expandTemplate, []string{"template", "contextJSON"})
+	data := `local expand_template(template, vars) = std.native("expand_template")(
+		template, std.toString(vars));
+		{
+			footest: expand_template("not }} a valid {{ template", {}),
+		}`
+
+	result, err := vm.EvaluateSnippet("testfoo", data)
+
+	if result != "" {
+		t.Errorf("Unexpected result on error. Want: %q, Got: %q", "", result)
+	}
+
+	if err == nil {
+		t.Errorf("Expected error but gone nil")
+	}
 }

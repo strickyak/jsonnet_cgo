@@ -24,7 +24,7 @@ import (
 
 type ImportCallback func(base, rel string) (result string, path string, err error)
 
-type NativeCallback func(params string) (result string, err error)
+type NativeCallback func(params ...string) (result string, err error)
 
 type VM struct {
 	guts           *C.struct_JsonnetVm
@@ -36,6 +36,7 @@ type VM struct {
 type NativeContext struct {
 	vm             *C.struct_JsonnetVm
 	nativeCallback NativeCallback
+	argCount       int
 }
 
 //export go_call_import
@@ -52,10 +53,19 @@ func go_call_import(vmPtr unsafe.Pointer, base, rel *C.char, pathPtr **C.char, o
 }
 
 //export go_call_native
-func go_call_native(nativeContextPtr unsafe.Pointer, params *C.char, okPtr *C.int) *C.char {
+func go_call_native(nativeContextPtr unsafe.Pointer, params **C.char, okPtr *C.int) *C.char {
 	nativeContext := (*NativeContext)(nativeContextPtr)
 
-	result, err := nativeContext.nativeCallback(C.GoString(params))
+	// Convert the **C.char params into a go slice
+	// From https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
+	tmpslice := (*[1 << 30]*C.char)(unsafe.Pointer(params))[:nativeContext.argCount:nativeContext.argCount]
+	goParams := make([]string, nativeContext.argCount)
+	for i, s := range tmpslice {
+		goParams[i] = C.GoString(s)
+	}
+
+	result, err := nativeContext.nativeCallback(goParams...)
+
 	if err != nil {
 		*okPtr = C.int(0)
 		return C.CString(err.Error())
@@ -134,17 +144,18 @@ func (vm *VM) ImportCallback(f ImportCallback) {
 
 // Register a native callback.
 func (vm *VM) NativeCallback(func_name string, f NativeCallback, paramNames []string) {
-	// Convert the paramNames slice into a null-terminated
-	params := C.makeCharArray(C.int(len(paramNames)))
+	// Convert the paramNames slice into a null-terminated array of strings.
+	params := C.makeCharArray(C.int(len(paramNames) + 1))
 	defer C.freeCharArray(params, C.int(len(paramNames)))
 	for i, s := range paramNames {
 		C.setArrayString(params, C.CString(s), C.int(i))
 	}
+	C.setArrayString(params, nil, C.int(len(paramNames)))
 
 	// When libjsonnet invokes CallNative_cgo, the following context will be passed
 	// so that the generic CallNative_cgo can call back to go_call_native which can
 	// call the registered native function.
-	native_context := NativeContext{vm.guts, f}
+	native_context := NativeContext{vm.guts, f, len(paramNames)}
 
 	C.jsonnet_native_callback(vm.guts, C.CString(func_name), C.JsonnetNativeCallbackPtr(C.CallNative_cgo), unsafe.Pointer(&native_context), params)
 }

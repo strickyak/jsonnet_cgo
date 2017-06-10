@@ -16,7 +16,7 @@ JsonnetJsonValuePtr CallNative_cgo(void *ctx, const JsonnetJsonValuePtr const *a
 
 char* go_call_import(void* vm, char *base, char *rel, char **path, int *success);
 
-char* go_call_native(void* native_context, char *argv, int *success);
+char* go_call_native(void* native_context, char **argv, int *success);
 
 // The following are helpers for converting a Go slice of strings
 // into an array of null terminated strings.

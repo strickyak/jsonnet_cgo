@@ -19,19 +19,34 @@ char* CallImport_cgo(void *ctx, const char *base, const char *rel, char **found_
   return buf;
 }
 
+struct NativeContext {
+    struct JsonnetVm *vm;
+    void *callback_function;
+    int arg_count;
+};
 
 // This function is bound for every native callback, but with a different context.
 JsonnetJsonValuePtr CallNative_cgo(void *ctx, const JsonnetJsonValuePtr const *argv, int *success) {
-  struct JsonnetVm* vm = ctx;
-  // Currently support only a single string parameter.
-  const char* params = jsonnet_json_extract_string(vm, argv[0]);
-  char* result = go_call_native(ctx, (char *)params, success);
+  struct NativeContext* context = ctx;
 
-  return jsonnet_json_make_string(vm, result);
+  const char** params = calloc(context->arg_count, sizeof(char *));
+  int i;
+  for (i = 0; i < context->arg_count; i++) {
+    params[i] = jsonnet_json_extract_string(context->vm, argv[i]);
+  }
+
+  char* result = go_call_native(ctx, (char **)params, success);
+
+  // We free only the array, not the underlying strings which are handled
+  // by the jsonnet vm.
+  free(params);
+
+  // Currently the return value can be a plain string value.
+  return jsonnet_json_make_string(context->vm, result);
 }
 
 // The following are helpers for converting a Go slice of strings
-// into an array of null terminated strings.
+// into an array of C strings.
 char** makeCharArray(int size) {
   return calloc(size, sizeof(char*));
 }
