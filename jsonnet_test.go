@@ -263,8 +263,8 @@ func Test_NativeCallbackError(t *testing.T) {
 
 	result, err := vm.EvaluateSnippet("testfoo", data)
 
-	if result != "" {
-		t.Errorf("Unexpected result on error. Want: %q, Got: %q", "", result)
+	if got, want := result, ""; got != want {
+		t.Errorf("Unexpected result on error. Got: %q, Want: %q", got, want)
 	}
 
 	if err == nil {

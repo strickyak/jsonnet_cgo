@@ -42,7 +42,9 @@ JsonnetJsonValuePtr CallNative_cgo(void *ctx, const JsonnetJsonValuePtr const *a
   free(params);
 
   // Currently the return value can be a plain string value.
-  return jsonnet_json_make_string(context->vm, result);
+  JsonnetJsonValuePtr json_result = jsonnet_json_make_string(context->vm, result);
+  free(result);
+  return json_result;
 }
 
 // The following are helpers for converting a Go slice of strings
