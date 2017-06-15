@@ -50,6 +50,7 @@ func Test_Simple(t *testing.T) {
 	check(t, nil, Version(), `v0.9.3`)
 
 	vm := Make()
+	defer vm.Destroy()
 	vm.TlaVar("color", "purple")
 	vm.TlaVar("size", "XXL")
 	vm.TlaCode("gooselevel", "1234 * 10 + 5")
@@ -84,6 +85,7 @@ func Test_Simple(t *testing.T) {
 
 func Test_FileScript(t *testing.T) {
 	vm := Make()
+	defer vm.Destroy()
 	x, err := vm.EvaluateFile("test2.j")
 	check(t, err, x, `{
    "awk": "/usr/bin/awk",
@@ -94,6 +96,7 @@ func Test_FileScript(t *testing.T) {
 
 func Test_Misc(t *testing.T) {
 	vm := Make()
+	defer vm.Destroy()
 
 	vm.MaxStack(10)
 	vm.MaxTrace(10)
@@ -127,6 +130,7 @@ func Test_FormatFile(t *testing.T) {
 	}
 
 	vm := Make()
+	defer vm.Destroy()
 	result, err := vm.FormatFile(filename)
 
 	check(t, err, result, `{
@@ -144,6 +148,7 @@ func Test_FormatSnippet(t *testing.T) {
 `
 
 	vm := Make()
+	defer vm.Destroy()
 	result, err := vm.FormatSnippet("testfoo", data)
 
 	check(t, err, result, `{
@@ -161,6 +166,7 @@ func Test_FormatIndent(t *testing.T) {
 `
 
 	vm := Make()
+	defer vm.Destroy()
 	vm.FormatIndent(1)
 	result, err := vm.FormatSnippet("testfoo", data)
 
