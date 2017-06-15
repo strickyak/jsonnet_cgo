@@ -1,6 +1,4 @@
-package jsonnet_test
-
-import jsonnet "github.com/strickyak/jsonnet_cgo"
+package jsonnet
 
 import (
 	"errors"
@@ -12,7 +10,7 @@ import (
 
 // Demo for the README.
 func Test_Demo(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
 	vm.ExtVar("color", "purple")
 
 	x, err := vm.EvaluateSnippet(`Test_Demo`, `"dark " + std.extVar("color")`)
@@ -49,9 +47,9 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, jsonnet.Version(), `v0.9.3`)
+	check(t, nil, Version(), `v0.9.3`)
 
-	vm := jsonnet.Make()
+	vm := Make()
 	vm.TlaVar("color", "purple")
 	vm.TlaVar("size", "XXL")
 	vm.TlaCode("gooselevel", "1234 * 10 + 5")
@@ -85,7 +83,7 @@ func Test_Simple(t *testing.T) {
 }
 
 func Test_FileScript(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
 	x, err := vm.EvaluateFile("test2.j")
 	check(t, err, x, `{
    "awk": "/usr/bin/awk",
@@ -95,7 +93,7 @@ func Test_FileScript(t *testing.T) {
 }
 
 func Test_Misc(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
 
 	vm.MaxStack(10)
 	vm.MaxTrace(10)
@@ -128,7 +126,7 @@ func Test_FormatFile(t *testing.T) {
 		t.Fatalf("WriteFile %s: %v", filename, err)
 	}
 
-	vm := jsonnet.Make()
+	vm := Make()
 	result, err := vm.FormatFile(filename)
 
 	check(t, err, result, `{
@@ -145,7 +143,7 @@ func Test_FormatSnippet(t *testing.T) {
     "trailing": "comma",}
 `
 
-	vm := jsonnet.Make()
+	vm := Make()
 	result, err := vm.FormatSnippet("testfoo", data)
 
 	check(t, err, result, `{
@@ -162,7 +160,7 @@ func Test_FormatIndent(t *testing.T) {
    "trailing": "comma",}
 `
 
-	vm := jsonnet.Make()
+	vm := Make()
 	vm.FormatIndent(1)
 	result, err := vm.FormatSnippet("testfoo", data)
 
