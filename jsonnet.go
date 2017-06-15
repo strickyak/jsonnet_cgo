@@ -12,7 +12,12 @@ package jsonnet
 #include <memory.h>
 #include <string.h>
 #include <stdio.h>
-#include "bridge.h"
+#include <stdlib.h>
+#include <libjsonnet.h>
+
+char *CallImport_cgo(void *ctx, const char *base, const char *rel, char **found_here, int *success);
+struct JsonnetJsonValue *CallNative_cgo(void *ctx, const struct JsonnetJsonValue *const *argv, int *success);
+
 #cgo CXXFLAGS: -std=c++0x -O3
 */
 import "C"
@@ -107,7 +112,8 @@ func (vm *VM) FormatSnippet(filename, snippet string) (string, error) {
 // Override the callback used to locate imports.
 func (vm *VM) ImportCallback(f ImportCallback) {
 	vm.importCallback = f
-	C.jsonnet_import_callback(vm.guts, C.JsonnetImportCallbackPtr(C.CallImport_cgo), unsafe.Pointer(vm))
+	C.jsonnet_import_callback(vm.guts, (*C.JsonnetImportCallback)(unsafe.Pointer(C.CallImport_cgo)), unsafe.Pointer(vm))
+}
 }
 
 // Bind a Jsonnet external var to the given value.
