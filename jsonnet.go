@@ -24,6 +24,8 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
+	"runtime"
 	"unsafe"
 )
 
@@ -193,3 +195,165 @@ func (vm *VM) JpathAdd(path string) {
  * jsonnet_evaluate_file_stream
  * jsonnet_evaluate_snippet_stream
  */
+
+// JsonValue represents a jsonnet JSON object.
+type JsonValue struct {
+	vm   *VM
+	guts *C.struct_JsonnetJsonValue
+}
+
+func (v *JsonValue) Extract() interface{} {
+	if x, ok := v.ExtractString(); ok {
+		return x
+	}
+	if x, ok := v.ExtractNumber(); ok {
+		return x
+	}
+	if x, ok := v.ExtractBool(); ok {
+		return x
+	}
+	if ok := v.ExtractNull(); ok {
+		return nil
+	}
+	panic("Unable to extract value")
+}
+
+// ExtractString returns the string value and true if the value was a string
+func (v *JsonValue) ExtractString() (string, bool) {
+	cstr := C.jsonnet_json_extract_string(v.vm.guts, v.guts)
+	if cstr == nil {
+		return "", false
+	}
+	return C.GoString(cstr), true
+}
+
+func (v *JsonValue) ExtractNumber() (float64, bool) {
+	var ret C.double
+	ok := C.jsonnet_json_extract_number(v.vm.guts, v.guts, &ret)
+	return float64(ret), ok != 0
+}
+
+func (v *JsonValue) ExtractBool() (bool, bool) {
+	ret := C.jsonnet_json_extract_bool(v.vm.guts, v.guts)
+	switch ret {
+	case 0:
+		return false, true
+	case 1:
+		return true, true
+	case 2:
+		// Not a bool
+		return false, false
+	default:
+		panic("jsonnet_json_extract_number returned unexpected value")
+	}
+}
+
+// ExtractNull returns true iff the value is null
+func (v *JsonValue) ExtractNull() bool {
+	ret := C.jsonnet_json_extract_null(v.vm.guts, v.guts)
+	return ret != 0
+}
+
+func (vm *VM) newjson(ptr *C.struct_JsonnetJsonValue) *JsonValue {
+	v := &JsonValue{vm: vm, guts: ptr}
+	runtime.SetFinalizer(v, (*JsonValue).destroy)
+	return v
+}
+
+func (v *JsonValue) destroy() {
+	if v.guts == nil {
+		return
+	}
+	C.jsonnet_json_destroy(v.vm.guts, v.guts)
+	v.guts = nil
+	runtime.SetFinalizer(v, nil)
+}
+
+// Take ownership of the embedded ptr, effectively consuming the JsonValue
+func (v *JsonValue) take() *C.struct_JsonnetJsonValue {
+	ptr := v.guts
+	if ptr == nil {
+		panic("taking nil pointer from JsonValue")
+	}
+	v.guts = nil
+	runtime.SetFinalizer(v, nil)
+	return ptr
+}
+
+func (vm *VM) NewJson(value interface{}) *JsonValue {
+	switch val := value.(type) {
+	case string:
+		return vm.NewString(val)
+	case int:
+		return vm.NewNumber(float64(val))
+	case float64:
+		return vm.NewNumber(val)
+	case bool:
+		return vm.NewBool(val)
+	case nil:
+		return vm.NewNull()
+	case []interface{}:
+		a := vm.NewArray()
+		for _, v := range val {
+			a.ArrayAppend(vm.NewJson(v))
+		}
+		return a
+	case map[string]interface{}:
+		o := vm.NewObject()
+		for k, v := range val {
+			o.ObjectAppend(k, vm.NewJson(v))
+		}
+		return o
+	default:
+		panic(fmt.Sprintf("NewJson can't handle type: %T", value))
+	}
+}
+
+func (vm *VM) NewString(v string) *JsonValue {
+	cstr := C.CString(v)
+	defer C.free(unsafe.Pointer(cstr))
+	ptr := C.jsonnet_json_make_string(vm.guts, cstr)
+	return vm.newjson(ptr)
+}
+
+func (vm *VM) NewNumber(v float64) *JsonValue {
+	ptr := C.jsonnet_json_make_number(vm.guts, C.double(v))
+	return vm.newjson(ptr)
+}
+
+func (vm *VM) NewBool(v bool) *JsonValue {
+	var i C.int
+	if v {
+		i = 1
+	} else {
+		i = 0
+	}
+	ptr := C.jsonnet_json_make_bool(vm.guts, i)
+	return vm.newjson(ptr)
+}
+
+func (vm *VM) NewNull() *JsonValue {
+	ptr := C.jsonnet_json_make_null(vm.guts)
+	return vm.newjson(ptr)
+}
+
+func (vm *VM) NewArray() *JsonValue {
+	ptr := C.jsonnet_json_make_array(vm.guts)
+	return vm.newjson(ptr)
+}
+
+func (v *JsonValue) ArrayAppend(item *JsonValue) {
+	C.jsonnet_json_array_append(v.vm.guts, v.guts, item.take())
+}
+
+func (vm *VM) NewObject() *JsonValue {
+	ptr := C.jsonnet_json_make_object(vm.guts)
+	return vm.newjson(ptr)
+}
+
+func (v *JsonValue) ObjectAppend(key string, value *JsonValue) {
+	ckey := C.CString(key)
+	defer C.free(unsafe.Pointer(ckey))
+
+	C.jsonnet_json_object_append(v.vm.guts, v.guts, ckey, value.take())
+}

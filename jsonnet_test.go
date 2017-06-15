@@ -176,3 +176,79 @@ func Test_FormatIndent(t *testing.T) {
  trailing: "comma" }
 `)
 }
+
+func TestJsonString(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	v := vm.NewString("foo")
+
+	if v2, ok := v.ExtractString(); !ok {
+		t.Errorf("ExtractString() returned !ok")
+	} else if v2 != "foo" {
+		t.Errorf("Incorrect extracted string: %s", v2)
+	}
+
+	if _, ok := v.ExtractNumber(); ok {
+		t.Errorf("ExtractNumber() returned ok")
+	}
+
+	if _, ok := v.ExtractBool(); ok {
+		t.Errorf("ExtractBool() returned ok")
+	}
+
+	if ok := v.ExtractNull(); ok {
+		t.Errorf("ExtractNull() returned ok")
+	}
+}
+
+func TestJsonNumber(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	v := vm.NewNumber(42)
+
+	if _, ok := v.ExtractString(); ok {
+		t.Errorf("ExtractString() returned ok")
+	}
+
+	if v2, ok := v.ExtractNumber(); !ok {
+		t.Errorf("ExtractNumber() returned !ok")
+	} else if v2 != 42 {
+		t.Errorf("ExtractNumber() returned unexpected value: %v", v2)
+	}
+
+	if _, ok := v.ExtractBool(); ok {
+		t.Errorf("ExtractBool() returned ok")
+	}
+
+	if ok := v.ExtractNull(); ok {
+		t.Errorf("ExtractNull() returned ok")
+	}
+}
+
+func TestJsonArray(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	a := vm.NewArray()
+	a.ArrayAppend(vm.NewString("foo"))
+	a.ArrayAppend(vm.NewNull())
+	a.ArrayAppend(vm.NewNumber(3.14))
+
+	// Can't actually inspect array elements with this version of
+	// jsonnet ...
+}
+
+func TestJsonObject(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	a := vm.NewObject()
+	a.ObjectAppend("foo", vm.NewString("foo"))
+	a.ObjectAppend("bar", vm.NewNull())
+	a.ObjectAppend("baz", vm.NewNumber(3.14))
+
+	// Can't actually inspect array elements with this version of
+	// jsonnet ...
+}
