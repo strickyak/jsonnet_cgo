@@ -27,3 +27,7 @@ _testmain.go
 *~
 .*.swp
 .*.swo
+
+# RCS
+RCS
+*,v
