@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -251,4 +252,72 @@ func TestJsonObject(t *testing.T) {
 
 	// Can't actually inspect array elements with this version of
 	// jsonnet ...
+}
+
+func TestNativeRaw(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	vm.NativeCallbackRaw("myadd", []string{"a", "b"}, func(args ...*JsonValue) (*JsonValue, error) {
+		if len(args) != 2 {
+			return nil, errors.New("wrong number of args")
+		}
+
+		a, ok := args[0].ExtractNumber()
+		if !ok {
+			return nil, errors.New("a is not a number")
+		}
+		b, ok := args[1].ExtractNumber()
+		if !ok {
+			return nil, errors.New("b is not a number")
+		}
+		return vm.NewNumber(a + b), nil
+	})
+
+	x, err := vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(3, 4)`)
+	check(t, err, x, "7\n")
+
+	x, err = vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(42)`)
+	if err == nil {
+		t.Errorf("Wrong number of args failed to produce error")
+	}
+
+	x, err = vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(3, "foo")`)
+	if err == nil {
+		t.Errorf("Go error was not translated into jsonnet error")
+	} else if !strings.Contains(err.Error(), "b is not a number") {
+		t.Errorf("Wrong jsonnet error: %v", err)
+	}
+}
+
+func TestNative(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	vm.NativeCallback("myadd", []string{"a", "b"}, func(a, b float64) (float64, error) {
+		return a + b, nil
+	})
+	vm.NativeCallback("fail", []string{}, func() (interface{}, error) {
+		return nil, fmt.Errorf("this is an error")
+	})
+
+	x, err := vm.EvaluateSnippet("Native", `std.native("myadd")(3, 4)`)
+	check(t, err, x, "7\n")
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("myadd")(42)`)
+	if err == nil {
+		t.Errorf("Wrong number of args failed to produce error")
+	}
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("myadd")(3, "foo")`)
+	if err == nil {
+		t.Errorf("Wrong arg types failed to produce an error")
+	}
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("fail")()`)
+	if err == nil {
+		t.Errorf("Go error was not propagated")
+	} else if !strings.Contains(err.Error(), "this is an error") {
+		t.Errorf("Go error text was not propagated")
+	}
 }

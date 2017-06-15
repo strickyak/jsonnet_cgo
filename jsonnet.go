@@ -25,15 +25,96 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
+	"sync"
 	"unsafe"
 )
 
 type ImportCallback func(base, rel string) (result string, path string, err error)
 
+type NativeCallback func(args ...*JsonValue) (result *JsonValue, err error)
+
+type nativeFunc struct {
+	vm       *VM
+	argc     int
+	callback NativeCallback
+}
+
+// Global registry of native functions.  Cgo pointer rules don't allow
+// us to pass go pointers directly (may not be stable), so pass uintptr
+// keys into this indirect map instead.
+var nativeFuncsMu sync.Mutex
+var nativeFuncsIdx uintptr
+var nativeFuncs = make(map[uintptr]*nativeFunc)
+
+func registerFunc(vm *VM, arity int, callback NativeCallback) uintptr {
+	f := nativeFunc{vm: vm, argc: arity, callback: callback}
+
+	nativeFuncsMu.Lock()
+	defer nativeFuncsMu.Unlock()
+
+	nativeFuncsIdx++
+	for nativeFuncs[nativeFuncsIdx] != nil {
+		nativeFuncsIdx++
+	}
+
+	nativeFuncs[nativeFuncsIdx] = &f
+	return nativeFuncsIdx
+}
+
+func getFunc(key uintptr) *nativeFunc {
+	nativeFuncsMu.Lock()
+	defer nativeFuncsMu.Unlock()
+
+	return nativeFuncs[key]
+}
+
+func unregisterFuncs(vm *VM) {
+	nativeFuncsMu.Lock()
+	defer nativeFuncsMu.Unlock()
+
+	// This is inefficient if there are many
+	// simultaneously-existing VMs...
+	for idx, f := range nativeFuncs {
+		if f.vm == vm {
+			delete(nativeFuncs, idx)
+		}
+	}
+}
+
 type VM struct {
 	guts           *C.struct_JsonnetVm
 	importCallback ImportCallback
+}
+
+//export go_call_native
+func go_call_native(key uintptr, argv **C.struct_JsonnetJsonValue, okPtr *C.int) *C.struct_JsonnetJsonValue {
+	f := getFunc(key)
+	vm := f.vm
+
+	goArgv := make([]*JsonValue, f.argc)
+	for i := 0; i < f.argc; i++ {
+		p := unsafe.Pointer(uintptr(unsafe.Pointer(argv)) + unsafe.Sizeof(*argv)*uintptr(i))
+		argptr := (**C.struct_JsonnetJsonValue)(p)
+		// NB: argv will be freed by jsonnet after this
+		// function exits, so don't want (*JsonValue).destroy
+		// finalizer.
+		goArgv[i] = &JsonValue{
+			vm:   vm,
+			guts: *argptr,
+		}
+	}
+
+	ret, err := f.callback(goArgv...)
+	if err != nil {
+		*okPtr = C.int(0)
+		ret = vm.NewString(err.Error())
+	} else {
+		*okPtr = C.int(1)
+	}
+
+	return ret.take()
 }
 
 //export go_call_import
@@ -62,6 +143,7 @@ func Make() *VM {
 
 // Complement of Make().
 func (vm *VM) Destroy() {
+	unregisterFuncs(vm)
 	C.jsonnet_destroy(vm.guts)
 	vm.guts = nil
 }
@@ -131,6 +213,58 @@ func (vm *VM) ImportCallback(f ImportCallback) {
 	vm.importCallback = f
 	C.jsonnet_import_callback(vm.guts, (*C.JsonnetImportCallback)(unsafe.Pointer(C.CallImport_cgo)), unsafe.Pointer(vm))
 }
+
+// NativeCallback is a helper around NativeCallbackRaw that uses
+// `reflect` to convert argument and result types to/from JsonValue.
+// `f` is expected to be a function that takes argument types
+// supported by `(*JsonValue).Extract` and returns `(x, error)` where
+// `x` is a type supported by `NewJson`.
+func (vm *VM) NativeCallback(name string, params []string, f interface{}) {
+	ty := reflect.TypeOf(f)
+	if ty.NumIn() != len(params) {
+		panic("Wrong number of parameters")
+	}
+	if ty.NumOut() != 2 {
+		panic("Wrong number of output parameters")
+	}
+
+	wrapper := func(args ...*JsonValue) (*JsonValue, error) {
+		in := make([]reflect.Value, len(args))
+		for i, arg := range args {
+			value := reflect.ValueOf(arg.Extract())
+			if vty := value.Type(); !vty.ConvertibleTo(ty.In(i)) {
+				return nil, fmt.Errorf("parameter %d (type %s) cannot be converted to type %s", i, vty, ty.In(i))
+			}
+			in[i] = value.Convert(ty.In(i))
+		}
+
+		out := reflect.ValueOf(f).Call(in)
+
+		result := vm.NewJson(out[0].Interface())
+		var err error
+		if out[1].IsValid() && !out[1].IsNil() {
+			err = out[1].Interface().(error)
+		}
+		return result, err
+	}
+
+	vm.NativeCallbackRaw(name, params, wrapper)
+}
+
+func (vm *VM) NativeCallbackRaw(name string, params []string, f NativeCallback) {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+
+	// jsonnet expects this to be NULL-terminated, so the last
+	// element is left as nil
+	cparams := make([]*C.char, len(params)+1)
+	for i, param := range params {
+		cparams[i] = C.CString(param)
+		defer C.free(unsafe.Pointer(cparams[i]))
+	}
+
+	key := registerFunc(vm, len(params), f)
+	C.jsonnet_native_callback(vm.guts, cname, (*C.JsonnetNativeCallback)(C.CallNative_cgo), unsafe.Pointer(key), (**C.char)(unsafe.Pointer(&cparams[0])))
 }
 
 // Bind a Jsonnet external var to the given value.
