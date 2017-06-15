@@ -40,11 +40,11 @@ func go_call_import(vmPtr unsafe.Pointer, base, rel *C.char, pathPtr **C.char, o
 	result, path, err := vm.importCallback(C.GoString(base), C.GoString(rel))
 	if err != nil {
 		*okPtr = C.int(0)
-		return C.CString(err.Error())
+		return jsonnetString(vm, err.Error())
 	}
-	*pathPtr = C.CString(path)
+	*pathPtr = jsonnetString(vm, path)
 	*okPtr = C.int(1)
-	return C.CString(result)
+	return jsonnetString(vm, result)
 }
 
 // Evaluate a file containing Jsonnet code, return a JSON string.
@@ -62,6 +62,21 @@ func Make() *VM {
 func (vm *VM) Destroy() {
 	C.jsonnet_destroy(vm.guts)
 	vm.guts = nil
+}
+
+// jsonnet often wants char* strings that were allocated via
+// jsonnet_realloc.  This function does that.
+func jsonnetString(vm *VM, s string) *C.char {
+	clen := C.size_t(len(s)) + 1 // num bytes including trailing \0
+
+	// TODO: remove additional copy
+	cstr := C.CString(s)
+	defer C.free(unsafe.Pointer(cstr))
+
+	ret := C.jsonnet_realloc(vm.guts, nil, clen)
+	C.memcpy(unsafe.Pointer(ret), unsafe.Pointer(cstr), clen)
+
+	return ret
 }
 
 // Evaluate a file containing Jsonnet code, return a JSON string.
