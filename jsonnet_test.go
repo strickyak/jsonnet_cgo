@@ -1,18 +1,17 @@
-package jsonnet_test
-
-import jsonnet "github.com/strickyak/jsonnet_cgo"
+package jsonnet
 
 import (
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 )
 
 // Demo for the README.
 func Test_Demo(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
 	vm.ExtVar("color", "purple")
 
 	x, err := vm.EvaluateSnippet(`Test_Demo`, `"dark " + std.extVar("color")`)
@@ -49,9 +48,10 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, jsonnet.Version(), `v0.9.3`)
+	check(t, nil, Version(), `v0.9.3`)
 
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 	vm.TlaVar("color", "purple")
 	vm.TlaVar("size", "XXL")
 	vm.TlaCode("gooselevel", "1234 * 10 + 5")
@@ -85,7 +85,8 @@ func Test_Simple(t *testing.T) {
 }
 
 func Test_FileScript(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 	x, err := vm.EvaluateFile("test2.j")
 	check(t, err, x, `{
    "awk": "/usr/bin/awk",
@@ -95,7 +96,8 @@ func Test_FileScript(t *testing.T) {
 }
 
 func Test_Misc(t *testing.T) {
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 
 	vm.MaxStack(10)
 	vm.MaxTrace(10)
@@ -128,7 +130,8 @@ func Test_FormatFile(t *testing.T) {
 		t.Fatalf("WriteFile %s: %v", filename, err)
 	}
 
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 	result, err := vm.FormatFile(filename)
 
 	check(t, err, result, `{
@@ -145,7 +148,8 @@ func Test_FormatSnippet(t *testing.T) {
     "trailing": "comma",}
 `
 
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 	result, err := vm.FormatSnippet("testfoo", data)
 
 	check(t, err, result, `{
@@ -162,7 +166,8 @@ func Test_FormatIndent(t *testing.T) {
    "trailing": "comma",}
 `
 
-	vm := jsonnet.Make()
+	vm := Make()
+	defer vm.Destroy()
 	vm.FormatIndent(1)
 	result, err := vm.FormatSnippet("testfoo", data)
 
@@ -171,4 +176,148 @@ func Test_FormatIndent(t *testing.T) {
  notevaluated: 20 + 22,
  trailing: "comma" }
 `)
+}
+
+func TestJsonString(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	v := vm.NewString("foo")
+
+	if v2, ok := v.ExtractString(); !ok {
+		t.Errorf("ExtractString() returned !ok")
+	} else if v2 != "foo" {
+		t.Errorf("Incorrect extracted string: %s", v2)
+	}
+
+	if _, ok := v.ExtractNumber(); ok {
+		t.Errorf("ExtractNumber() returned ok")
+	}
+
+	if _, ok := v.ExtractBool(); ok {
+		t.Errorf("ExtractBool() returned ok")
+	}
+
+	if ok := v.ExtractNull(); ok {
+		t.Errorf("ExtractNull() returned ok")
+	}
+}
+
+func TestJsonNumber(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	v := vm.NewNumber(42)
+
+	if _, ok := v.ExtractString(); ok {
+		t.Errorf("ExtractString() returned ok")
+	}
+
+	if v2, ok := v.ExtractNumber(); !ok {
+		t.Errorf("ExtractNumber() returned !ok")
+	} else if v2 != 42 {
+		t.Errorf("ExtractNumber() returned unexpected value: %v", v2)
+	}
+
+	if _, ok := v.ExtractBool(); ok {
+		t.Errorf("ExtractBool() returned ok")
+	}
+
+	if ok := v.ExtractNull(); ok {
+		t.Errorf("ExtractNull() returned ok")
+	}
+}
+
+func TestJsonArray(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	a := vm.NewArray()
+	a.ArrayAppend(vm.NewString("foo"))
+	a.ArrayAppend(vm.NewNull())
+	a.ArrayAppend(vm.NewNumber(3.14))
+
+	// Can't actually inspect array elements with this version of
+	// jsonnet ...
+}
+
+func TestJsonObject(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	a := vm.NewObject()
+	a.ObjectAppend("foo", vm.NewString("foo"))
+	a.ObjectAppend("bar", vm.NewNull())
+	a.ObjectAppend("baz", vm.NewNumber(3.14))
+
+	// Can't actually inspect array elements with this version of
+	// jsonnet ...
+}
+
+func TestNativeRaw(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	vm.NativeCallbackRaw("myadd", []string{"a", "b"}, func(args ...*JsonValue) (*JsonValue, error) {
+		if len(args) != 2 {
+			return nil, errors.New("wrong number of args")
+		}
+
+		a, ok := args[0].ExtractNumber()
+		if !ok {
+			return nil, errors.New("a is not a number")
+		}
+		b, ok := args[1].ExtractNumber()
+		if !ok {
+			return nil, errors.New("b is not a number")
+		}
+		return vm.NewNumber(a + b), nil
+	})
+
+	x, err := vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(3, 4)`)
+	check(t, err, x, "7\n")
+
+	x, err = vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(42)`)
+	if err == nil {
+		t.Errorf("Wrong number of args failed to produce error")
+	}
+
+	x, err = vm.EvaluateSnippet("NativeRaw", `std.native("myadd")(3, "foo")`)
+	if err == nil {
+		t.Errorf("Go error was not translated into jsonnet error")
+	} else if !strings.Contains(err.Error(), "b is not a number") {
+		t.Errorf("Wrong jsonnet error: %v", err)
+	}
+}
+
+func TestNative(t *testing.T) {
+	vm := Make()
+	defer vm.Destroy()
+
+	vm.NativeCallback("myadd", []string{"a", "b"}, func(a, b float64) (float64, error) {
+		return a + b, nil
+	})
+	vm.NativeCallback("fail", []string{}, func() (interface{}, error) {
+		return nil, fmt.Errorf("this is an error")
+	})
+
+	x, err := vm.EvaluateSnippet("Native", `std.native("myadd")(3, 4)`)
+	check(t, err, x, "7\n")
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("myadd")(42)`)
+	if err == nil {
+		t.Errorf("Wrong number of args failed to produce error")
+	}
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("myadd")(3, "foo")`)
+	if err == nil {
+		t.Errorf("Wrong arg types failed to produce an error")
+	}
+
+	x, err = vm.EvaluateSnippet("Native", `std.native("fail")()`)
+	if err == nil {
+		t.Errorf("Go error was not propagated")
+	} else if !strings.Contains(err.Error(), "this is an error") {
+		t.Errorf("Go error text was not propagated")
+	}
 }
