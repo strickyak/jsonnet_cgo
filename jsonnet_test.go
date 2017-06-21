@@ -48,7 +48,7 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, Version(), `v0.9.3`)
+	check(t, nil, Version(), `v0.9.4`)
 
 	vm := Make()
 	defer vm.Destroy()
