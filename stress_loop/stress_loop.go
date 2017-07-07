@@ -140,6 +140,7 @@ func ExercizeOneVM(finished chan Unit) {
 }
 
 func main() {
+	flag.Parse()
 	startMain := time.Now()
 	for loops := 1; loops <= *L; loops++ {
 		startLoop := time.Now()
