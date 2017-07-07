@@ -165,8 +165,11 @@ func jsonnetString(vm *VM, s string) *C.char {
 
 // Evaluate a file containing Jsonnet code, return a JSON string.
 func (vm *VM) EvaluateFile(filename string) (string, error) {
+	cfilename := C.CString(filename)
+	defer C.free(unsafe.Pointer(cfilename))
+
 	var e C.int
-	z := C.GoString(C.jsonnet_evaluate_file(vm.guts, C.CString(filename), &e))
+	z := C.GoString(C.jsonnet_evaluate_file(vm.guts, cfilename, &e))
 	if e != 0 {
 		return "", errors.New(z)
 	}
@@ -175,8 +178,15 @@ func (vm *VM) EvaluateFile(filename string) (string, error) {
 
 // Evaluate a string containing Jsonnet code, return a JSON string.
 func (vm *VM) EvaluateSnippet(filename, snippet string) (string, error) {
+	cfilename := C.CString(filename)
+	csnippet := C.CString(snippet)
+	defer func() {
+		C.free(unsafe.Pointer(csnippet))
+		C.free(unsafe.Pointer(cfilename))
+	}()
+
 	var e C.int
-	z := C.GoString(C.jsonnet_evaluate_snippet(vm.guts, C.CString(filename), C.CString(snippet), &e))
+	z := C.GoString(C.jsonnet_evaluate_snippet(vm.guts, cfilename, csnippet, &e))
 	if e != 0 {
 		return "", errors.New(z)
 	}
@@ -185,8 +195,11 @@ func (vm *VM) EvaluateSnippet(filename, snippet string) (string, error) {
 
 // Format a file containing Jsonnet code, return a JSON string.
 func (vm *VM) FormatFile(filename string) (string, error) {
+	cfilename := C.CString(filename)
+	defer C.free(unsafe.Pointer(cfilename))
+
 	var e C.int
-	z := C.GoString(C.jsonnet_fmt_file(vm.guts, C.CString(filename), &e))
+	z := C.GoString(C.jsonnet_fmt_file(vm.guts, cfilename, &e))
 	if e != 0 {
 		return "", errors.New(z)
 	}
@@ -200,8 +213,15 @@ func (vm *VM) FormatIndent(n int) {
 
 // Format a string containing Jsonnet code, return a JSON string.
 func (vm *VM) FormatSnippet(filename, snippet string) (string, error) {
+	cfilename := C.CString(filename)
+	csnippet := C.CString(snippet)
+	defer func() {
+		C.free(unsafe.Pointer(csnippet))
+		C.free(unsafe.Pointer(cfilename))
+	}()
+
 	var e C.int
-	z := C.GoString(C.jsonnet_fmt_snippet(vm.guts, C.CString(filename), C.CString(snippet), &e))
+	z := C.GoString(C.jsonnet_fmt_snippet(vm.guts, cfilename, csnippet, &e))
 	if e != 0 {
 		return "", errors.New(z)
 	}
@@ -211,7 +231,10 @@ func (vm *VM) FormatSnippet(filename, snippet string) (string, error) {
 // Override the callback used to locate imports.
 func (vm *VM) ImportCallback(f ImportCallback) {
 	vm.importCallback = f
-	C.jsonnet_import_callback(vm.guts, (*C.JsonnetImportCallback)(unsafe.Pointer(C.CallImport_cgo)), unsafe.Pointer(vm))
+	C.jsonnet_import_callback(
+		vm.guts,
+		(*C.JsonnetImportCallback)(unsafe.Pointer(C.CallImport_cgo)),
+		unsafe.Pointer(vm))
 }
 
 // NativeCallback is a helper around NativeCallbackRaw that uses
@@ -264,27 +287,56 @@ func (vm *VM) NativeCallbackRaw(name string, params []string, f NativeCallback) 
 	}
 
 	key := registerFunc(vm, len(params), f)
-	C.jsonnet_native_callback(vm.guts, cname, (*C.JsonnetNativeCallback)(C.CallNative_cgo), unsafe.Pointer(key), (**C.char)(unsafe.Pointer(&cparams[0])))
+	C.jsonnet_native_callback(
+		vm.guts,
+		cname,
+		(*C.JsonnetNativeCallback)(C.CallNative_cgo),
+		unsafe.Pointer(key),
+		(**C.char)(unsafe.Pointer(&cparams[0])))
 }
 
 // Bind a Jsonnet external var to the given value.
 func (vm *VM) ExtVar(key, val string) {
-	C.jsonnet_ext_var(vm.guts, C.CString(key), C.CString(val))
+	ckey := C.CString(key)
+	cval := C.CString(val)
+	defer func() {
+		C.free(unsafe.Pointer(cval))
+		C.free(unsafe.Pointer(ckey))
+	}()
+	C.jsonnet_ext_var(vm.guts, ckey, cval)
 }
 
 // Bind a Jsonnet external var to the given Jsonnet code.
 func (vm *VM) ExtCode(key, val string) {
-	C.jsonnet_ext_code(vm.guts, C.CString(key), C.CString(val))
+	ckey := C.CString(key)
+	cval := C.CString(val)
+	defer func() {
+		C.free(unsafe.Pointer(cval))
+		C.free(unsafe.Pointer(ckey))
+	}()
+	C.jsonnet_ext_code(vm.guts, ckey, cval)
 }
 
 // Bind a Jsonnet top-level argument to the given value.
 func (vm *VM) TlaVar(key, val string) {
-	C.jsonnet_tla_var(vm.guts, C.CString(key), C.CString(val))
+	ckey := C.CString(key)
+	cval := C.CString(val)
+	defer func() {
+		C.free(unsafe.Pointer(cval))
+		C.free(unsafe.Pointer(ckey))
+	}()
+	C.jsonnet_tla_var(vm.guts, ckey, cval)
 }
 
 // Bind a Jsonnet top-level argument to the given Jsonnet code.
 func (vm *VM) TlaCode(key, val string) {
-	C.jsonnet_tla_code(vm.guts, C.CString(key), C.CString(val))
+	ckey := C.CString(key)
+	cval := C.CString(val)
+	defer func() {
+		C.free(unsafe.Pointer(cval))
+		C.free(unsafe.Pointer(ckey))
+	}()
+	C.jsonnet_tla_code(vm.guts, ckey, cval)
 }
 
 // Set the maximum stack depth.
@@ -318,7 +370,9 @@ func (vm *VM) StringOutput(v bool) {
 
 // Add to the default import callback's library search path.
 func (vm *VM) JpathAdd(path string) {
-	C.jsonnet_jpath_add(vm.guts, C.CString(path))
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	C.jsonnet_jpath_add(vm.guts, cpath)
 }
 
 /* The following are not implemented because they are trivial to implement in Go on top of the
