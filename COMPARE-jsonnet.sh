@@ -5,6 +5,14 @@
 # with the ones in a jsonnet directory.
 # See "Usage:" a few lines below.
 
+WRITE=
+case "$1" in
+	-w )
+		WRITE=1
+		shift
+		;;
+esac
+
 case "$#/$1" in
 	0/ )
 		set ../../google/jsonnet/
@@ -15,10 +23,13 @@ case "$#/$1" in
 	* )
 		echo >&2 '
 Usage:
-	sh  $0  ?/path/to/jsonnet/?
+	sh  $0  ?-w?  ?/path/to/jsonnet/?
 
 This command takes one argument, the jsonnet repository directory,
 ending in /jsonnet/.  The default is ../../google/jsonnet/.
+
+If -w is provided, then it will attempt to update files
+with differences from the source.
 '
 		exit 13
 		;;
@@ -57,8 +68,10 @@ for x in \
 	#
 do
 	ok=false
+	F=
 	for subdir in core cpp third_party/md5 include
 	do
+		test -f "$J/$subdir/$x" && F="$J/$subdir/$x"
 		if cmp "$J/$subdir/$x" "./$x" 2>/dev/null
 		then
 	    		ok=true
@@ -71,5 +84,6 @@ do
 		echo "ok: $x"
 	else
 		echo "******** NOT OK: $x"
+		test -n "$WRITE" && cp -v "$F" "./$x"
 	fi
 done

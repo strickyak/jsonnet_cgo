@@ -30,18 +30,21 @@ struct FmtOpts {
     bool stripAllButComments;
     bool stripEverything;
     bool prettyFieldNames;
+    bool sortImports;
     FmtOpts(void)
-      : stringStyle('l'),
-        commentStyle('l'),
-        indent(0),
-        maxBlankLines(2),
-        padArrays(false),
-        padObjects(true),
-        stripComments(false),
-        stripAllButComments(false),
-        stripEverything(false),
-        prettyFieldNames(true)
-    { }
+        : stringStyle('s'),
+          commentStyle('s'),
+          indent(2),
+          maxBlankLines(2),
+          padArrays(false),
+          padObjects(true),
+          stripComments(false),
+          stripAllButComments(false),
+          stripEverything(false),
+          prettyFieldNames(true),
+          sortImports(true)
+    {
+    }
 };
 
 /** The inverse of jsonnet_parse.

@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <algorithm>
+#include <set>
 #include <typeinfo>
 
 #include "formatter.h"
@@ -30,21 +32,34 @@ static std::string unparse_id(const Identifier *id)
 /** If left recursive, return the left hand side, else return nullptr. */
 static AST *left_recursive(AST *ast_)
 {
-    if (auto *ast = dynamic_cast<Apply*>(ast_))
+    if (auto *ast = dynamic_cast<Apply *>(ast_))
         return ast->target;
-    if (auto *ast = dynamic_cast<ApplyBrace*>(ast_))
+    if (auto *ast = dynamic_cast<ApplyBrace *>(ast_))
         return ast->left;
-    if (auto *ast = dynamic_cast<Binary*>(ast_))
+    if (auto *ast = dynamic_cast<Binary *>(ast_))
         return ast->left;
-    if (auto *ast = dynamic_cast<Index*>(ast_))
+    if (auto *ast = dynamic_cast<Index *>(ast_))
         return ast->target;
-    if (auto *ast = dynamic_cast<InSuper*>(ast_))
+    if (auto *ast = dynamic_cast<InSuper *>(ast_))
         return ast->element;
     return nullptr;
 }
 static const AST *left_recursive(const AST *ast_)
 {
-    return left_recursive(const_cast<AST*>(ast_));
+    return left_recursive(const_cast<AST *>(ast_));
+}
+
+/** The transitive closure of left_recursive). */
+static AST *left_recursive_deep(AST *ast_)
+{
+    AST *last = ast_;
+    AST *left = left_recursive(ast_);
+
+    while (left != nullptr) {
+        last = left;
+        left = left_recursive(last);
+    }
+    return last;
 }
 
 /** Pretty-print fodder.
@@ -59,21 +74,21 @@ void fodder_fill(std::ostream &o, const Fodder &fodder, bool space_before, bool 
     for (const auto &fod : fodder) {
         switch (fod.kind) {
             case FodderElement::LINE_END:
-            if (fod.comment.size() > 0)
-                o << "  " << fod.comment[0];
-            o << '\n';
-            o << std::string(fod.blanks, '\n');
-            o << std::string(fod.indent, ' ');
-            last_indent = fod.indent;
-            space_before = false;
-            break;
+                if (fod.comment.size() > 0)
+                    o << "  " << fod.comment[0];
+                o << '\n';
+                o << std::string(fod.blanks, '\n');
+                o << std::string(fod.indent, ' ');
+                last_indent = fod.indent;
+                space_before = false;
+                break;
 
             case FodderElement::INTERSTITIAL:
-            if (space_before)
-                o << ' ';
-            o << fod.comment[0];
-            space_before = true;
-            break;
+                if (space_before)
+                    o << ' ';
+                o << fod.comment[0];
+                space_before = true;
+                break;
 
             case FodderElement::PARAGRAPH: {
                 bool first = true;
@@ -107,16 +122,16 @@ static void fodder_count(unsigned &column, const Fodder &fodder, bool space_befo
         switch (fod.kind) {
             case FodderElement::PARAGRAPH:
             case FodderElement::LINE_END:
-            column = fod.indent;
-            space_before = false;
-            break;
+                column = fod.indent;
+                space_before = false;
+                break;
 
             case FodderElement::INTERSTITIAL:
-            if (space_before)
-                column++;
-            column += fod.comment[0].length();
-            space_before = true;
-            break;
+                if (space_before)
+                    column++;
+                column += fod.comment[0].length();
+                space_before = true;
+                break;
         }
     }
     if (separate_token && space_before)
@@ -124,16 +139,13 @@ static void fodder_count(unsigned &column, const Fodder &fodder, bool space_befo
 }
 
 class Unparser {
-    public:
-
-    private:
+   public:
+   private:
     std::ostream &o;
     FmtOpts opts;
 
-    public:
-    Unparser(std::ostream &o, const FmtOpts &opts)
-      : o(o), opts(opts)
-    { }
+   public:
+    Unparser(std::ostream &o, const FmtOpts &opts) : o(o), opts(opts) {}
 
     void unparseSpecs(const std::vector<ComprehensionSpec> &specs)
     {
@@ -141,17 +153,17 @@ class Unparser {
             fill(spec.openFodder, true, true);
             switch (spec.kind) {
                 case ComprehensionSpec::FOR:
-                o << "for";
-                fill(spec.varFodder, true, true);
-                o << unparse_id(spec.var);
-                fill(spec.inFodder, true, true);
-                o << "in";
-                unparse(spec.expr, true);
-                break;
+                    o << "for";
+                    fill(spec.varFodder, true, true);
+                    o << unparse_id(spec.var);
+                    fill(spec.inFodder, true, true);
+                    o << "in";
+                    unparse(spec.expr, true);
+                    break;
                 case ComprehensionSpec::IF:
-                o << "if";
-                unparse(spec.expr, true);
-                break;
+                    o << "if";
+                    unparse(spec.expr, true);
+                    break;
             }
         }
     }
@@ -168,7 +180,8 @@ class Unparser {
         o << "(";
         bool first = true;
         for (const auto &param : params) {
-            if (!first) o << ",";
+            if (!first)
+                o << ",";
             fill(param.idFodder, !first, true);
             o << unparse_id(param.id);
             if (param.expr != nullptr) {
@@ -197,8 +210,8 @@ class Unparser {
     {
         bool first = true;
         for (const auto &field : fields) {
-
-            if (!first) o << ',';
+            if (!first)
+                o << ',';
 
             switch (field.kind) {
                 case ObjectField::LOCAL: {
@@ -215,8 +228,6 @@ class Unparser {
                 case ObjectField::FIELD_ID:
                 case ObjectField::FIELD_STR:
                 case ObjectField::FIELD_EXPR: {
-
-
                     if (field.kind == ObjectField::FIELD_ID) {
                         fill(field.fodder1, !first || space_before, true);
                         o << unparse_id(field.id);
@@ -235,7 +246,8 @@ class Unparser {
 
                     fill(field.opFodder, false, false);
 
-                    if (field.superSugar) o << "+";
+                    if (field.superSugar)
+                        o << "+";
                     switch (field.hide) {
                         case ObjectField::INHERIT: o << ":"; break;
                         case ObjectField::HIDDEN: o << "::"; break;
@@ -275,13 +287,14 @@ class Unparser {
 
         fill(ast_->openFodder, space_before, separate_token);
 
-        if (auto *ast = dynamic_cast<const Apply*>(ast_)) {
+        if (auto *ast = dynamic_cast<const Apply *>(ast_)) {
             unparse(ast->target, space_before);
             fill(ast->fodderL, false, false);
             o << "(";
             bool first = true;
             for (const auto &arg : ast->args) {
-                if (!first) o << ',';
+                if (!first)
+                    o << ',';
                 bool space = !first;
                 if (arg.id != nullptr) {
                     fill(arg.idFodder, space, true);
@@ -293,7 +306,8 @@ class Unparser {
                 fill(arg.commaFodder, false, false);
                 first = false;
             }
-            if (ast->trailingComma) o << ",";
+            if (ast->trailingComma)
+                o << ",";
             fill(ast->fodderR, false, false);
             o << ")";
             if (ast->tailstrict) {
@@ -301,33 +315,36 @@ class Unparser {
                 o << "tailstrict";
             }
 
-        } else if (auto *ast = dynamic_cast<const ApplyBrace*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const ApplyBrace *>(ast_)) {
             unparse(ast->left, space_before);
             unparse(ast->right, true);
 
-        } else if (auto *ast = dynamic_cast<const Array*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Array *>(ast_)) {
             o << "[";
             bool first = true;
             for (const auto &element : ast->elements) {
-                if (!first) o << ',';
+                if (!first)
+                    o << ',';
                 unparse(element.expr, !first || opts.padArrays);
                 fill(element.commaFodder, false, false);
                 first = false;
             }
-            if (ast->trailingComma) o << ",";
+            if (ast->trailingComma)
+                o << ",";
             fill(ast->closeFodder, ast->elements.size() > 0, opts.padArrays);
             o << "]";
 
-        } else if (auto *ast = dynamic_cast<const ArrayComprehension*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const ArrayComprehension *>(ast_)) {
             o << "[";
             unparse(ast->body, opts.padArrays);
             fill(ast->commaFodder, false, false);
-            if (ast->trailingComma) o << ",";
+            if (ast->trailingComma)
+                o << ",";
             unparseSpecs(ast->specs);
             fill(ast->closeFodder, true, opts.padArrays);
             o << "]";
 
-        } else if (auto *ast = dynamic_cast<const Assert*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Assert *>(ast_)) {
             o << "assert";
             unparse(ast->cond, true);
             if (ast->message != nullptr) {
@@ -339,17 +356,17 @@ class Unparser {
             o << ";";
             unparse(ast->rest, true);
 
-        } else if (auto *ast = dynamic_cast<const Binary*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Binary *>(ast_)) {
             unparse(ast->left, space_before);
             fill(ast->opFodder, true, true);
             o << bop_string(ast->op);
             // The - 1 is for left associativity.
             unparse(ast->right, true);
 
-        } else if (auto *ast = dynamic_cast<const BuiltinFunction*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const BuiltinFunction *>(ast_)) {
             o << "/* builtin " << ast->name << " */ null";
 
-        } else if (auto *ast = dynamic_cast<const Conditional*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Conditional *>(ast_)) {
             o << "if";
             unparse(ast->cond, true);
             fill(ast->thenFodder, true, true);
@@ -363,35 +380,35 @@ class Unparser {
                 unparse(ast->branchTrue, true);
             }
 
-        } else if (dynamic_cast<const Dollar*>(ast_)) {
+        } else if (dynamic_cast<const Dollar *>(ast_)) {
             o << "$";
 
-        } else if (auto *ast = dynamic_cast<const Error*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Error *>(ast_)) {
             o << "error";
             unparse(ast->expr, true);
 
-        } else if (auto *ast = dynamic_cast<const Function*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Function *>(ast_)) {
             o << "function";
-            unparseParams(ast->parenLeftFodder, ast->params, ast->trailingComma,
-                          ast->parenRightFodder);
+            unparseParams(
+                ast->parenLeftFodder, ast->params, ast->trailingComma, ast->parenRightFodder);
             unparse(ast->body, true);
 
-        } else if (auto *ast = dynamic_cast<const Import*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Import *>(ast_)) {
             o << "import";
             unparse(ast->file, true);
 
-        } else if (auto *ast = dynamic_cast<const Importstr*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Importstr *>(ast_)) {
             o << "importstr";
             unparse(ast->file, true);
 
-        } else if (auto *ast = dynamic_cast<const InSuper*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const InSuper *>(ast_)) {
             unparse(ast->element, true);
             fill(ast->inFodder, true, true);
             o << "in";
             fill(ast->superFodder, true, true);
             o << "super";
 
-        } else if (auto *ast = dynamic_cast<const Index*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Index *>(ast_)) {
             unparse(ast->target, space_before);
             fill(ast->dotFodder, false, false);
             if (ast->id != nullptr) {
@@ -423,7 +440,7 @@ class Unparser {
                 o << "]";
             }
 
-        } else if (auto *ast = dynamic_cast<const Local*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Local *>(ast_)) {
             o << "local";
             assert(ast->binds.size() > 0);
             bool first = true;
@@ -434,7 +451,9 @@ class Unparser {
                 fill(bind.varFodder, true, true);
                 o << unparse_id(bind.var);
                 if (bind.functionSugar) {
-                    unparseParams(bind.parenLeftFodder, bind.params, bind.trailingComma,
+                    unparseParams(bind.parenLeftFodder,
+                                  bind.params,
+                                  bind.trailingComma,
                                   bind.parenRightFodder);
                 }
                 fill(bind.opFodder, true, true);
@@ -445,13 +464,13 @@ class Unparser {
             o << ";";
             unparse(ast->body, true);
 
-        } else if (auto *ast = dynamic_cast<const LiteralBoolean*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const LiteralBoolean *>(ast_)) {
             o << (ast->value ? "true" : "false");
 
-        } else if (auto *ast = dynamic_cast<const LiteralNumber*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const LiteralNumber *>(ast_)) {
             o << ast->originalString;
 
-        } else if (auto *ast = dynamic_cast<const LiteralString*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const LiteralString *>(ast_)) {
             if (ast->tokenKind == LiteralString::DOUBLE) {
                 o << "\"";
                 o << encode_utf8(ast->value);
@@ -464,7 +483,9 @@ class Unparser {
                 o << "|||\n";
                 if (ast->value.c_str()[0] != U'\n')
                     o << ast->blockIndent;
-                for (const char32_t *cp = ast->value.c_str() ; *cp != U'\0' ; ++cp) {
+                for (const char32_t *cp = ast->value.c_str(); *cp != U'\0'; ++cp) {
+                    // Formatter always outputs in unix mode.
+                    if (*cp == '\r') continue;
                     std::string utf8;
                     encode_utf8(*cp, utf8);
                     o << utf8;
@@ -475,7 +496,7 @@ class Unparser {
                 o << ast->blockTermIndent << "|||";
             } else if (ast->tokenKind == LiteralString::VERBATIM_DOUBLE) {
                 o << "@\"";
-                for (const char32_t *cp = ast->value.c_str() ; *cp != U'\0' ; ++cp) {
+                for (const char32_t *cp = ast->value.c_str(); *cp != U'\0'; ++cp) {
                     if (*cp == U'"') {
                         o << "\"\"";
                     } else {
@@ -487,7 +508,7 @@ class Unparser {
                 o << "\"";
             } else if (ast->tokenKind == LiteralString::VERBATIM_SINGLE) {
                 o << "@'";
-                for (const char32_t *cp = ast->value.c_str() ; *cp != U'\0' ; ++cp) {
+                for (const char32_t *cp = ast->value.c_str(); *cp != U'\0'; ++cp) {
                     if (*cp == U'\'') {
                         o << "''";
                     } else {
@@ -499,17 +520,18 @@ class Unparser {
                 o << "'";
             }
 
-        } else if (dynamic_cast<const LiteralNull*>(ast_)) {
+        } else if (dynamic_cast<const LiteralNull *>(ast_)) {
             o << "null";
 
-        } else if (auto *ast = dynamic_cast<const Object*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Object *>(ast_)) {
             o << "{";
             unparseFields(ast->fields, opts.padObjects);
-            if (ast->trailingComma) o << ",";
+            if (ast->trailingComma)
+                o << ",";
             fill(ast->closeFodder, ast->fields.size() > 0, opts.padObjects);
             o << "}";
 
-        } else if (auto *ast = dynamic_cast<const DesugaredObject*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const DesugaredObject *>(ast_)) {
             o << "{";
             for (AST *assert : ast->asserts) {
                 o << "assert";
@@ -530,15 +552,16 @@ class Unparser {
             }
             o << "}";
 
-        } else if (auto *ast = dynamic_cast<const ObjectComprehension*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const ObjectComprehension *>(ast_)) {
             o << "{";
             unparseFields(ast->fields, opts.padObjects);
-            if (ast->trailingComma) o << ",";
+            if (ast->trailingComma)
+                o << ",";
             unparseSpecs(ast->specs);
             fill(ast->closeFodder, true, opts.padObjects);
             o << "}";
 
-        } else if (auto *ast = dynamic_cast<const ObjectComprehensionSimple*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const ObjectComprehensionSimple *>(ast_)) {
             o << "{[";
             unparse(ast->field, false);
             o << "]:";
@@ -547,16 +570,16 @@ class Unparser {
             unparse(ast->array, true);
             o << "}";
 
-        } else if (auto *ast = dynamic_cast<const Parens*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Parens *>(ast_)) {
             o << "(";
             unparse(ast->expr, false);
             fill(ast->closeFodder, false, false);
             o << ")";
 
-        } else if (dynamic_cast<const Self*>(ast_)) {
+        } else if (dynamic_cast<const Self *>(ast_)) {
             o << "self";
 
-        } else if (auto *ast = dynamic_cast<const SuperIndex*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const SuperIndex *>(ast_)) {
             o << "super";
             fill(ast->dotFodder, false, false);
             if (ast->id != nullptr) {
@@ -570,95 +593,61 @@ class Unparser {
                 o << "]";
             }
 
-        } else if (auto *ast = dynamic_cast<const Unary*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Unary *>(ast_)) {
             o << uop_string(ast->op);
-            if (dynamic_cast<const Dollar*>(left_recursive(ast->expr))) {
+            if (dynamic_cast<const Dollar *>(left_recursive_deep(ast->expr))) {
                 unparse(ast->expr, true);
             } else {
                 unparse(ast->expr, false);
             }
 
-        } else if (auto *ast = dynamic_cast<const Var*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<const Var *>(ast_)) {
             o << encode_utf8(ast->id->name);
 
         } else {
             std::cerr << "INTERNAL ERROR: Unknown AST: " << ast_ << std::endl;
             std::abort();
-
         }
     }
 };
-
 
 /********************************************************************************
  * The rest of this file contains transformations on the ASTs before unparsing. *
  ********************************************************************************/
 
-/** As a + b but preserves constraints.
- *
- * Namely, a LINE_END is not allowed to follow a PARAGRAPH or a LINE_END.
- */
-static Fodder concat_fodder(const Fodder &a, const Fodder &b)
-{
-    if (a.size() == 0) return b;
-    if (b.size() == 0) return a;
-    Fodder r = a;
-    // Add the first element of b somehow.
-    if (r[a.size() - 1].kind != FodderElement::INTERSTITIAL &&
-        b[0].kind == FodderElement::LINE_END) {
-        if (b[0].comment.size() > 0) {
-            // The line end had a comment, so create a single line paragraph for it.
-            r.emplace_back(FodderElement::PARAGRAPH, b[0].blanks, b[0].indent, b[0].comment);
-        } else {
-            // Merge it into the previous line end.
-            r[r.size() - 1].indent = b[0].indent;
-            r[r.size() - 1].blanks += b[0].blanks;
-        }
-    } else {
-        r.push_back(b[0]);
-    }
-    // Add the rest of b.
-    for (unsigned i = 1; i < b.size() ; ++i) {
-        r.push_back(b[i]);
-    }
-    return r;
-}
-
-/** Move b to the front of a. */
-static void fodder_move_front(Fodder &a, Fodder &b)
-{
-    a = concat_fodder(b, a);
-    b.clear();
-}
-
 /** A generic Pass that does nothing but can be extended to easily define real passes.
  */
 class FmtPass : public CompilerPass {
-    protected:
+   protected:
     FmtOpts opts;
 
-    public:
-    FmtPass(Allocator &alloc, const FmtOpts &opts)
-     : CompilerPass(alloc), opts(opts) { }
+   public:
+    FmtPass(Allocator &alloc, const FmtOpts &opts) : CompilerPass(alloc), opts(opts) {}
 };
-
 
 class EnforceStringStyle : public FmtPass {
     using FmtPass::visit;
-    public:
-    EnforceStringStyle(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+
+   public:
+    EnforceStringStyle(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     void visit(LiteralString *lit)
     {
-        if (lit->tokenKind == LiteralString::BLOCK) return;
-        if (lit->tokenKind == LiteralString::VERBATIM_DOUBLE) return;
-        if (lit->tokenKind == LiteralString::VERBATIM_SINGLE) return;
+        if (lit->tokenKind == LiteralString::BLOCK)
+            return;
+        if (lit->tokenKind == LiteralString::VERBATIM_DOUBLE)
+            return;
+        if (lit->tokenKind == LiteralString::VERBATIM_SINGLE)
+            return;
         UString canonical = jsonnet_string_unescape(lit->location, lit->value);
         unsigned num_single = 0, num_double = 0;
         for (char32_t c : canonical) {
-            if (c == '\'') num_single++;
-            if (c == '"') num_double++;
+            if (c == '\'')
+                num_single++;
+            if (c == '"')
+                num_double++;
         }
-        if (num_single > 0 && num_double > 0) return;  // Don't change it.
+        if (num_single > 0 && num_double > 0)
+            return;  // Don't change it.
         bool use_single = opts.stringStyle == 's';
         if (num_single > 0)
             use_single = false;
@@ -672,11 +661,12 @@ class EnforceStringStyle : public FmtPass {
 };
 
 class EnforceCommentStyle : public FmtPass {
-    public:
+   public:
     bool firstFodder;
     EnforceCommentStyle(Allocator &alloc, const FmtOpts &opts)
-      : FmtPass(alloc, opts), firstFodder(true)
-    { }
+        : FmtPass(alloc, opts), firstFodder(true)
+    {
+    }
     /** Change the comment to match the given style, but don't break she-bang.
      *
      * If preserve_hash is true, do not touch a comment that starts with #!.
@@ -687,7 +677,8 @@ class EnforceCommentStyle : public FmtPass {
             s = "#" + s.substr(2);
         }
         if (opts.commentStyle == 's' && s[0] == '#') {
-            if (preserve_hash && s[1] == '!') return;
+            if (preserve_hash && s[1] == '!')
+                return;
             s = "//" + s.substr(1);
         }
     }
@@ -697,13 +688,12 @@ class EnforceCommentStyle : public FmtPass {
             switch (f.kind) {
                 case FodderElement::LINE_END:
                 case FodderElement::PARAGRAPH:
-                if (f.comment.size() == 1) {
-                    fixComment(f.comment[0], firstFodder);
-                }
-                break;
+                    if (f.comment.size() == 1) {
+                        fixComment(f.comment[0], firstFodder);
+                    }
+                    break;
 
-                case FodderElement::INTERSTITIAL:
-                break;
+                case FodderElement::INTERSTITIAL: break;
             }
             firstFodder = false;
         }
@@ -711,18 +701,19 @@ class EnforceCommentStyle : public FmtPass {
 };
 
 class EnforceMaximumBlankLines : public FmtPass {
-    public:
-    EnforceMaximumBlankLines(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+   public:
+    EnforceMaximumBlankLines(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     void fodderElement(FodderElement &f)
     {
         if (f.kind != FodderElement::INTERSTITIAL)
-            if (f.blanks > 2) f.blanks = 2;
+            if (f.blanks > opts.maxBlankLines)
+                f.blanks = opts.maxBlankLines;
     }
 };
 
 class StripComments : public FmtPass {
-    public:
-    StripComments(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+   public:
+    StripComments(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     void fodder(Fodder &fodder)
     {
         Fodder copy = fodder;
@@ -735,14 +726,17 @@ class StripComments : public FmtPass {
 };
 
 class StripEverything : public FmtPass {
-    public:
-    StripEverything(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
-    void fodder(Fodder &fodder) { fodder.clear(); }
+   public:
+    StripEverything(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
+    void fodder(Fodder &fodder)
+    {
+        fodder.clear();
+    }
 };
 
 class StripAllButComments : public FmtPass {
-    public:
-    StripAllButComments(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+   public:
+    StripAllButComments(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     Fodder comments;
     void fodder(Fodder &fodder)
     {
@@ -768,8 +762,7 @@ class StripAllButComments : public FmtPass {
 /** These cases are infix so we descend on the left to find the fodder. */
 static Fodder &open_fodder(AST *ast_)
 {
-    AST *left = left_recursive(ast_);
-    return left != nullptr ? open_fodder(left) : ast_->openFodder;
+    return left_recursive_deep(ast_)->openFodder;
 }
 
 /** Strip blank lines from the top of the file. */
@@ -792,8 +785,9 @@ bool contains_newline(const Fodder &fodder)
 /* Commas should appear at the end of an object/array only if the closing token is on a new line. */
 class FixTrailingCommas : public FmtPass {
     using FmtPass::visit;
-    public:
-    FixTrailingCommas(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+
+   public:
+    FixTrailingCommas(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     Fodder comments;
 
     // Generalized fix that works across a range of ASTs.
@@ -860,18 +854,17 @@ class FixTrailingCommas : public FmtPass {
         remove_comma(expr->fields.back().commaFodder, expr->trailingComma, expr->closeFodder);
         FmtPass::visit(expr);
     }
-
 };
-
 
 /* Remove nested parens. */
 class FixParens : public FmtPass {
     using FmtPass::visit;
-    public:
-    FixParens(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+
+   public:
+    FixParens(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     void visit(Parens *expr)
     {
-        if (auto *body = dynamic_cast<Parens*>(expr->expr)) {
+        if (auto *body = dynamic_cast<Parens *>(expr->expr)) {
             // Deal with fodder.
             expr->expr = body->expr;
             fodder_move_front(open_fodder(body->expr), body->openFodder);
@@ -881,24 +874,22 @@ class FixParens : public FmtPass {
     }
 };
 
-
-
 /* Ensure ApplyBrace syntax sugar is used in the case of A + { }. */
 class FixPlusObject : public FmtPass {
     using FmtPass::visit;
-    public:
-    FixPlusObject(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+
+   public:
+    FixPlusObject(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
     void visitExpr(AST *&expr)
     {
-        if (auto *bin_op = dynamic_cast<Binary*>(expr)) {
+        if (auto *bin_op = dynamic_cast<Binary *>(expr)) {
             // Could relax this to allow more ASTs on the LHS but this seems OK for now.
-            if (dynamic_cast<Var*>(bin_op->left)
-                || dynamic_cast<Index*>(bin_op->left)) {
-                if (AST *rhs = dynamic_cast<Object*>(bin_op->right)) {
+            if (dynamic_cast<Var *>(bin_op->left) || dynamic_cast<Index *>(bin_op->left)) {
+                if (AST *rhs = dynamic_cast<Object *>(bin_op->right)) {
                     if (bin_op->op == BOP_PLUS) {
                         fodder_move_front(rhs->openFodder, bin_op->opFodder);
-                        expr = alloc.make<ApplyBrace>(bin_op->location, bin_op->openFodder,
-                                                      bin_op->left, rhs);
+                        expr = alloc.make<ApplyBrace>(
+                            bin_op->location, bin_op->openFodder, bin_op->left, rhs);
                     }
                 }
             }
@@ -907,13 +898,12 @@ class FixPlusObject : public FmtPass {
     }
 };
 
-
-
 /* Remove final colon in slices. */
 class NoRedundantSliceColon : public FmtPass {
     using FmtPass::visit;
-    public:
-    NoRedundantSliceColon(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
+
+   public:
+    NoRedundantSliceColon(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
 
     void visit(Index *expr)
     {
@@ -931,18 +921,21 @@ class NoRedundantSliceColon : public FmtPass {
 /* Ensure syntax sugar is used where possible. */
 class PrettyFieldNames : public FmtPass {
     using FmtPass::visit;
-    public:
-    PrettyFieldNames(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) { }
 
-    bool isIdentifier(const UString &str) {
+   public:
+    PrettyFieldNames(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
+
+    bool isIdentifier(const UString &str)
+    {
+        // Identifiers cannot be zero-length.
+        if (str.length() == 0) return false;
+
         bool first = true;
         for (char32_t c : str) {
             if (!first && c >= '0' && c <= '9')
                 continue;
             first = false;
-            if ((c >= 'A' && c <= 'Z')
-                || (c >= 'a' && c <= 'z')
-                || (c == '_'))
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c == '_'))
                 continue;
             return false;
         }
@@ -956,7 +949,7 @@ class PrettyFieldNames : public FmtPass {
     {
         if (!expr->isSlice && expr->index != nullptr) {
             // Maybe we can use an id instead.
-            if (auto *lit = dynamic_cast<LiteralString*>(expr->index)) {
+            if (auto *lit = dynamic_cast<LiteralString *>(expr->index)) {
                 if (isIdentifier(lit->value)) {
                     expr->id = alloc.makeIdentifier(lit->value);
                     expr->idFodder = lit->openFodder;
@@ -972,7 +965,7 @@ class PrettyFieldNames : public FmtPass {
         for (auto &field : expr->fields) {
             // First try ["foo"] -> "foo".
             if (field.kind == ObjectField::FIELD_EXPR) {
-                if (auto *field_expr = dynamic_cast<LiteralString*>(field.expr1)) {
+                if (auto *field_expr = dynamic_cast<LiteralString *>(field.expr1)) {
                     field.kind = ObjectField::FIELD_STR;
                     fodder_move_front(field_expr->openFodder, field.fodder1);
                     if (field.methodSugar) {
@@ -984,7 +977,7 @@ class PrettyFieldNames : public FmtPass {
             }
             // Then try "foo" -> foo.
             if (field.kind == ObjectField::FIELD_STR) {
-                if (auto *lit = dynamic_cast<LiteralString*>(field.expr1)) {
+                if (auto *lit = dynamic_cast<LiteralString *>(field.expr1)) {
                     if (isIdentifier(lit->value)) {
                         field.kind = ObjectField::FIELD_ID;
                         field.id = alloc.makeIdentifier(lit->value);
@@ -998,13 +991,288 @@ class PrettyFieldNames : public FmtPass {
     }
 };
 
-class FixIndentation {
+/// Add newlines inside complex structures (arrays, objects etc.).
+///
+/// The main principle is that a structure can either be:
+/// * expanded and contain newlines in all the designated places
+/// * unexpanded and contain newlines in none of the designated places
+///
+/// It only looks shallowly at the AST nodes, so there may be some newlines deeper that
+/// don't affect expanding. For example:
+/// [{
+///     'a': 'b',
+///     'c': 'd',
+/// }]
+/// The outer array can stay unexpanded, because there are no newlines between
+/// the square brackets and the braces.
+class FixNewlines : public FmtPass {
+    using FmtPass::visit;
 
+    bool shouldExpand(const Array *array)
+    {
+        for (const auto &elem : array->elements) {
+            if (countNewlines(open_fodder(elem.expr)) > 0) {
+                return true;
+            }
+        }
+        if (countNewlines(array->closeFodder) > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    void expand(Array *array)
+    {
+        for (auto &elem : array->elements) {
+            ensureCleanNewline(open_fodder(elem.expr));
+        }
+        ensureCleanNewline(array->closeFodder);
+    }
+
+    Fodder &objectFieldOpenFodder(ObjectField &field)
+    {
+        if (field.kind == ObjectField::Kind::FIELD_STR) {
+            return field.expr1->openFodder;
+        }
+        return field.fodder1;
+    }
+
+    bool shouldExpand(Object *object)
+    {
+        for (auto &field : object->fields) {
+            if (countNewlines(objectFieldOpenFodder(field)) > 0) {
+                return true;
+            }
+        }
+        if (countNewlines(object->closeFodder) > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    void expand(Object *object)
+    {
+        for (auto &field : object->fields) {
+            ensureCleanNewline(objectFieldOpenFodder(field));
+        }
+        ensureCleanNewline(object->closeFodder);
+    }
+
+    bool shouldExpand(Local *local)
+    {
+        for (auto &bind : local->binds) {
+            if (countNewlines(bind.varFodder) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void expand(Local *local)
+    {
+        bool first = true;
+        for (auto &bind : local->binds) {
+            if (!first) {
+                ensureCleanNewline(bind.varFodder);
+            }
+            first = false;
+        }
+    }
+
+    bool shouldExpand(ArrayComprehension *comp)
+    {
+        if (countNewlines(open_fodder(comp->body)) > 0) {
+            return true;
+        }
+        for (auto &spec : comp->specs) {
+            if (countNewlines(spec.openFodder) > 0) {
+                return true;
+            }
+        }
+        if (countNewlines(comp->closeFodder) > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    void expand(ArrayComprehension *comp)
+    {
+        ensureCleanNewline(open_fodder(comp->body));
+        for (auto &spec : comp->specs) {
+            ensureCleanNewline(spec.openFodder);
+        }
+        ensureCleanNewline(comp->closeFodder);
+    }
+
+    bool shouldExpand(ObjectComprehension *comp)
+    {
+        for (auto &field : comp->fields) {
+            if (countNewlines(objectFieldOpenFodder(field)) > 0) {
+                return true;
+            }
+        }
+        for (auto &spec : comp->specs) {
+            if (countNewlines(spec.openFodder) > 0) {
+                return true;
+            }
+        }
+        if (countNewlines(comp->closeFodder) > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    void expand(ObjectComprehension *comp)
+    {
+        for (auto &field : comp->fields) {
+            ensureCleanNewline(objectFieldOpenFodder(field));
+        }
+        for (auto &spec : comp->specs) {
+            ensureCleanNewline(spec.openFodder);
+        }
+        ensureCleanNewline(comp->closeFodder);
+    }
+
+    bool shouldExpand(Parens *parens)
+    {
+        return countNewlines(open_fodder(parens->expr)) > 0 ||
+               countNewlines(parens->closeFodder) > 0;
+    }
+
+    void expand(Parens *parens)
+    {
+        ensureCleanNewline(open_fodder(parens->expr));
+        ensureCleanNewline(parens->closeFodder);
+    }
+
+    Fodder &argParamOpenFodder(ArgParam &param)
+    {
+        if (param.id != nullptr) {
+            return param.idFodder;
+        } else if (param.expr != nullptr) {
+            return open_fodder(param.expr);
+        } else {
+            std::cerr << "Invalid ArgParam" << std::endl;
+            abort();
+        }
+    }
+
+    // Example:
+    // f(1, 2,
+    //   3)
+    // Should be expanded to:
+    // f(1,
+    //   2,
+    //   3)
+    bool shouldExpandBetween(ArgParams &params)
+    {
+        bool first = true;
+        for (auto &param : params) {
+            if (!first && countNewlines(argParamOpenFodder(param)) > 0) {
+                return true;
+            }
+            first = false;
+        }
+        return false;
+    }
+
+    void expandBetween(ArgParams &params)
+    {
+        bool first = true;
+        for (auto &param : params) {
+            if (!first) {
+                ensureCleanNewline(argParamOpenFodder(param));
+            }
+            first = false;
+        }
+    }
+
+    // Example:
+    // foo(
+    //     1, 2, 3)
+    // Should be expanded to:
+    // foo(
+    //     1, 2, 3
+    // )
+    bool shouldExpandNearParens(ArgParams &params, Fodder &fodder_r)
+    {
+        if (params.empty()) {
+            return false;
+        }
+        auto &argFodder = argParamOpenFodder(params.front());
+        return countNewlines(fodder_r) > 0 || countNewlines(argFodder) > 0;
+    }
+
+    void expandNearParens(ArgParams &params, Fodder &fodder_r)
+    {
+        if (!params.empty()) {
+            ensureCleanNewline(argParamOpenFodder(params.front()));
+        }
+        ensureCleanNewline(fodder_r);
+    }
+
+   public:
+    FixNewlines(Allocator &alloc, const FmtOpts &opts) : FmtPass(alloc, opts) {}
+
+    template <class T>
+    void simpleExpandingVisit(T *expr)
+    {
+        if (shouldExpand(expr)) {
+            expand(expr);
+        }
+        FmtPass::visit(expr);
+    }
+
+    void visit(Array *array)
+    {
+        simpleExpandingVisit(array);
+    }
+
+    void visit(Object *object)
+    {
+        simpleExpandingVisit(object);
+    }
+
+    void visit(Local *local)
+    {
+        simpleExpandingVisit(local);
+    }
+
+    void visit(ArrayComprehension *comp)
+    {
+        simpleExpandingVisit(comp);
+    }
+
+    void visit(ObjectComprehension *comp)
+    {
+        simpleExpandingVisit(comp);
+    }
+
+    void visit(Parens *parens)
+    {
+        simpleExpandingVisit(parens);
+    }
+
+    void params(Fodder &fodder_l, ArgParams &params, Fodder &fodder_r)
+    {
+        if (shouldExpandBetween(params)) {
+            expandBetween(params);
+        }
+
+        if (shouldExpandNearParens(params, fodder_r)) {
+            expandNearParens(params, fodder_r);
+        }
+
+        FmtPass::params(fodder_l, params, fodder_r);
+    }
+};
+
+class FixIndentation {
     FmtOpts opts;
     unsigned column;
 
-    public:
-    FixIndentation(const FmtOpts &opts) : opts(opts), column(0) { }
+   public:
+    FixIndentation(const FmtOpts &opts) : opts(opts), column(0) {}
 
     /* Set the indentation on the fodder elements, adjust column counter as if it was printed.
      * \param fodder The fodder to pretend to print.
@@ -1012,10 +1280,10 @@ class FixIndentation {
      * \param separate_token If the last fodder was an interstitial, whether a space should follow
      * it.
      * \param all_but_last_indent New indentation value for all but final fodder element.
-     * \param last_indent New indentation value for but final fodder element.
+     * \param last_indent New indentation value for the final fodder element.
      */
-    void fill(Fodder &fodder, bool space_before, bool separate_token,
-              unsigned all_but_last_indent, unsigned last_indent)
+    void fill(Fodder &fodder, bool space_before, bool separate_token, unsigned all_but_last_indent,
+              unsigned last_indent)
     {
         setIndents(fodder, all_but_last_indent, last_indent);
         fodder_count(column, fodder, space_before, separate_token);
@@ -1039,7 +1307,7 @@ class FixIndentation {
     struct Indent {
         unsigned base;
         unsigned lineUp;
-        Indent(unsigned base, unsigned line_up) : base(base), lineUp(line_up) { }
+        Indent(unsigned base, unsigned line_up) : base(base), lineUp(line_up) {}
     };
 
     /** Calculate the indentation of sub-expressions.
@@ -1150,15 +1418,13 @@ class FixIndentation {
                     column += 2;  // in
                     Indent new_indent = newIndent(open_fodder(spec.expr), indent, column);
                     expr(spec.expr, new_indent, true);
-                }
-                break;
+                } break;
 
                 case ComprehensionSpec::IF: {
                     column += 2;  // if
                     Indent new_indent = newIndent(open_fodder(spec.expr), indent, column);
                     expr(spec.expr, new_indent, true);
-                }
-                break;
+                } break;
             }
         }
     }
@@ -1173,7 +1439,8 @@ class FixIndentation {
         Indent new_indent = newIndent(first_inside, indent, column);
         bool first = true;
         for (auto &param : params) {
-            if (!first) column++;  // ','
+            if (!first)
+                column++;  // ','
             fill(param.idFodder, !first, true, new_indent.lineUp);
             column += param.id->name.length();
             if (param.expr != nullptr) {
@@ -1209,11 +1476,11 @@ class FixIndentation {
         unsigned new_indent = indent.lineUp;
         bool first = true;
         for (auto &field : fields) {
-            if (!first) column++;  // ','
+            if (!first)
+                column++;  // ','
 
             switch (field.kind) {
                 case ObjectField::LOCAL: {
-
                     fill(field.fodder1, !first || space_before, true, indent.lineUp);
                     column += 5;  // local
                     fill(field.fodder2, true, true, indent.lineUp);
@@ -1228,7 +1495,6 @@ class FixIndentation {
                 case ObjectField::FIELD_ID:
                 case ObjectField::FIELD_STR:
                 case ObjectField::FIELD_EXPR: {
-
                     if (field.kind == ObjectField::FIELD_ID) {
                         fill(field.fodder1, !first || space_before, true, new_indent);
                         column += field.id->name.length();
@@ -1248,11 +1514,12 @@ class FixIndentation {
 
                     fill(field.opFodder, false, false, new_indent);
 
-                    if (field.superSugar) column++;
+                    if (field.superSugar)
+                        column++;
                     switch (field.hide) {
-                        case ObjectField::INHERIT: column+=1; break;
-                        case ObjectField::HIDDEN: column+=2; break;
-                        case ObjectField::VISIBLE: column+=3; break;
+                        case ObjectField::INHERIT: column += 1; break;
+                        case ObjectField::HIDDEN: column += 2; break;
+                        case ObjectField::VISIBLE: column += 3; break;
                     }
                     Indent new_indent2 = newIndent(open_fodder(field.expr2), indent, column);
                     expr(field.expr2, new_indent2, true);
@@ -1260,7 +1527,6 @@ class FixIndentation {
                 } break;
 
                 case ObjectField::ASSERT: {
-
                     fill(field.fodder1, !first || space_before, true, new_indent);
                     column += 6;  // assert
                     // + 1 for the space after the assert
@@ -1292,7 +1558,8 @@ class FixIndentation {
     /** Get the first fodder from an ArgParam. */
     const Fodder &argParamFirstFodder(const ArgParam &ap)
     {
-        if (ap.id != nullptr) return ap.idFodder;
+        if (ap.id != nullptr)
+            return ap.idFodder;
         return open_fodder(ap.expr);
     }
 
@@ -1304,17 +1571,18 @@ class FixIndentation {
      */
     void expr(AST *ast_, const Indent &indent, bool space_before)
     {
-        fill(ast_->openFodder, space_before, !left_recursive(ast_), indent.lineUp);
+        bool separate_token = !left_recursive(ast_);
 
-        if (auto *ast = dynamic_cast<Apply*>(ast_)) {
+        fill(ast_->openFodder, space_before, separate_token, indent.lineUp);
+
+        if (auto *ast = dynamic_cast<Apply *>(ast_)) {
             const Fodder &init_fodder = open_fodder(ast->target);
-            Indent new_indent = align(init_fodder, indent,
-                                      column + (space_before ? 1 : 0));
+            Indent new_indent = align(init_fodder, indent, column + (space_before ? 1 : 0));
             expr(ast->target, new_indent, space_before);
             fill(ast->fodderL, false, false, new_indent.lineUp);
             column++;  // (
-            const Fodder &first_fodder = ast->args.size() == 0
-                                         ? ast->fodderR : argParamFirstFodder(ast->args[0]);
+            const Fodder &first_fodder =
+                ast->args.size() == 0 ? ast->fodderR : argParamFirstFodder(ast->args[0]);
             bool strong_indent = false;
             // Need to use strong indent if any of the
             // arguments (except the first) are preceded by newlines.
@@ -1329,12 +1597,12 @@ class FixIndentation {
                     strong_indent = true;
             }
 
-            Indent arg_indent = strong_indent
-                                ? newIndentStrong(first_fodder, indent, column)
-                                : newIndent(first_fodder, indent, column);
+            Indent arg_indent = strong_indent ? newIndentStrong(first_fodder, indent, column)
+                                              : newIndent(first_fodder, indent, column);
             first = true;
             for (auto &arg : ast->args) {
-                if (!first) column++;  // ","
+                if (!first)
+                    column++;  // ","
 
                 bool space = !first;
                 if (arg.id != nullptr) {
@@ -1347,7 +1615,8 @@ class FixIndentation {
                 fill(arg.commaFodder, false, false, arg_indent.lineUp);
                 first = false;
             }
-            if (ast->trailingComma) column++;  // ","
+            if (ast->trailingComma)
+                column++;  // ","
             fill(ast->fodderR, false, false, arg_indent.lineUp, indent.base);
             column++;  // )
             if (ast->tailstrict) {
@@ -1355,19 +1624,17 @@ class FixIndentation {
                 column += 10;  // tailstrict
             }
 
-        } else if (auto *ast = dynamic_cast<ApplyBrace*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<ApplyBrace *>(ast_)) {
             const Fodder &init_fodder = open_fodder(ast->left);
-            Indent new_indent = align(init_fodder, indent,
-                                      column + (space_before ? 1 : 0));
+            Indent new_indent = align(init_fodder, indent, column + (space_before ? 1 : 0));
             expr(ast->left, new_indent, space_before);
             expr(ast->right, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<Array*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Array *>(ast_)) {
             column++;  // '['
             // First fodder element exists and is a newline
-            const Fodder &first_fodder = ast->elements.size() > 0
-                                         ? open_fodder(ast->elements[0].expr)
-                                         : ast->closeFodder;
+            const Fodder &first_fodder =
+                ast->elements.size() > 0 ? open_fodder(ast->elements[0].expr) : ast->closeFodder;
             unsigned new_column = column + (opts.padArrays ? 1 : 0);
             bool strong_indent = false;
             // Need to use strong indent if there are not newlines before any of the sub-expressions
@@ -1381,36 +1648,41 @@ class FixIndentation {
                     strong_indent = true;
             }
 
-            Indent new_indent = strong_indent
-                                ? newIndentStrong(first_fodder, indent, new_column)
-                                : newIndent(first_fodder, indent, new_column);
+            Indent new_indent = strong_indent ? newIndentStrong(first_fodder, indent, new_column)
+                                              : newIndent(first_fodder, indent, new_column);
 
             first = true;
             for (auto &element : ast->elements) {
-                if (!first) column++;
+                if (!first)
+                    column++;
                 expr(element.expr, new_indent, !first || opts.padArrays);
                 fill(element.commaFodder, false, false, new_indent.lineUp, new_indent.lineUp);
                 first = false;
             }
-            if (ast->trailingComma) column++;
+            if (ast->trailingComma)
+                column++;
 
             // Handle penultimate newlines from expr.close_fodder if there are any.
-            fill(ast->closeFodder, ast->elements.size() > 0, opts.padArrays, new_indent.lineUp,
+            fill(ast->closeFodder,
+                 ast->elements.size() > 0,
+                 opts.padArrays,
+                 new_indent.lineUp,
                  indent.base);
             column++;  // ']'
 
-        } else if (auto *ast = dynamic_cast<ArrayComprehension*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<ArrayComprehension *>(ast_)) {
             column++;  // [
-            Indent new_indent = newIndent(open_fodder(ast->body), indent,
-                                          column + (opts.padArrays ? 1 : 0));
+            Indent new_indent =
+                newIndent(open_fodder(ast->body), indent, column + (opts.padArrays ? 1 : 0));
             expr(ast->body, new_indent, opts.padArrays);
             fill(ast->commaFodder, false, false, new_indent.lineUp);
-            if (ast->trailingComma) column++;  // ','
+            if (ast->trailingComma)
+                column++;  // ','
             specs(ast->specs, new_indent);
             fill(ast->closeFodder, true, opts.padArrays, new_indent.lineUp, indent.base);
             column++;  // ]
 
-        } else if (auto *ast = dynamic_cast<Assert*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Assert *>(ast_)) {
             column += 6;  // assert
             // + 1 for the space after the assert
             Indent new_indent = newIndent(open_fodder(ast->cond), indent, column + 1);
@@ -1424,7 +1696,7 @@ class FixIndentation {
             column++;  // ";"
             expr(ast->rest, indent, true);
 
-        } else if (auto *ast = dynamic_cast<Binary*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Binary *>(ast_)) {
             const Fodder &first_fodder = open_fodder(ast->left);
 
             // Need to use strong indent in the case of
@@ -1438,9 +1710,8 @@ class FixIndentation {
             bool strong_indent = hasNewLines(ast->opFodder) || hasNewLines(open_fodder(ast->right));
 
             unsigned inner_column = column + (space_before ? 1 : 0);
-            Indent new_indent = strong_indent
-                                ? alignStrong(first_fodder, indent, inner_column)
-                                : align(first_fodder, indent, inner_column);
+            Indent new_indent = strong_indent ? alignStrong(first_fodder, indent, inner_column)
+                                              : align(first_fodder, indent, inner_column);
             expr(ast->left, new_indent, space_before);
             fill(ast->opFodder, true, true, new_indent.lineUp);
             column += bop_string(ast->op).length();
@@ -1450,12 +1721,12 @@ class FixIndentation {
             // true
             expr(ast->right, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<BuiltinFunction*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<BuiltinFunction *>(ast_)) {
             column += 11;  // "/* builtin "
             column += ast->name.length();
             column += 8;  // " */ null"
 
-        } else if (auto *ast = dynamic_cast<Conditional*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Conditional *>(ast_)) {
             column += 2;  // if
             Indent cond_indent = newIndent(open_fodder(ast->cond), indent, column + 1);
             expr(ast->cond, cond_indent, true);
@@ -1470,39 +1741,42 @@ class FixIndentation {
                 expr(ast->branchFalse, false_indent, true);
             }
 
-        } else if (dynamic_cast<Dollar*>(ast_)) {
+        } else if (dynamic_cast<Dollar *>(ast_)) {
             column++;  // $
 
-        } else if (auto *ast = dynamic_cast<Error*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Error *>(ast_)) {
             column += 5;  // error
             Indent new_indent = newIndent(open_fodder(ast->expr), indent, column + 1);
             expr(ast->expr, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<Function*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Function *>(ast_)) {
             column += 8;  // function
-            params(ast->parenLeftFodder, ast->params, ast->trailingComma,
-                   ast->parenRightFodder, indent);
+            params(ast->parenLeftFodder,
+                   ast->params,
+                   ast->trailingComma,
+                   ast->parenRightFodder,
+                   indent);
             Indent new_indent = newIndent(open_fodder(ast->body), indent, column + 1);
             expr(ast->body, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<Import*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Import *>(ast_)) {
             column += 6;  // import
             Indent new_indent = newIndent(open_fodder(ast->file), indent, column + 1);
             expr(ast->file, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<Importstr*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Importstr *>(ast_)) {
             column += 9;  // importstr
             Indent new_indent = newIndent(open_fodder(ast->file), indent, column + 1);
             expr(ast->file, new_indent, true);
 
-        } else if (auto *ast = dynamic_cast<InSuper*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<InSuper *>(ast_)) {
             expr(ast->element, indent, space_before);
             fill(ast->inFodder, true, true, indent.lineUp);
             column += 2;  // in
             fill(ast->superFodder, true, true, indent.lineUp);
             column += 5;  // super
 
-        } else if (auto *ast = dynamic_cast<Index*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Index *>(ast_)) {
             expr(ast->target, indent, space_before);
             fill(ast->dotFodder, false, false, indent.lineUp);
             if (ast->id != nullptr) {
@@ -1547,7 +1821,7 @@ class FixIndentation {
                 column++;  // "]"
             }
 
-        } else if (auto *ast = dynamic_cast<Local*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Local *>(ast_)) {
             column += 5;  // local
             assert(ast->binds.size() > 0);
             bool first = true;
@@ -1559,8 +1833,11 @@ class FixIndentation {
                 fill(bind.varFodder, true, true, new_indent.lineUp);
                 column += bind.var->name.length();
                 if (bind.functionSugar) {
-                    params(bind.parenLeftFodder, bind.params, bind.trailingComma,
-                           bind.parenRightFodder, new_indent);
+                    params(bind.parenLeftFodder,
+                           bind.params,
+                           bind.trailingComma,
+                           bind.parenRightFodder,
+                           new_indent);
                 }
                 fill(bind.opFodder, true, true, new_indent.lineUp);
                 column++;  // '='
@@ -1571,13 +1848,13 @@ class FixIndentation {
             column++;  // ';'
             expr(ast->body, indent, true);
 
-        } else if (auto *ast = dynamic_cast<LiteralBoolean*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<LiteralBoolean *>(ast_)) {
             column += (ast->value ? 4 : 5);
 
-        } else if (auto *ast = dynamic_cast<LiteralNumber*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<LiteralNumber *>(ast_)) {
             column += ast->originalString.length();
 
-        } else if (auto *ast = dynamic_cast<LiteralString*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<LiteralString *>(ast_)) {
             if (ast->tokenKind == LiteralString::DOUBLE) {
                 column += 2 + ast->value.length();  // Include quotes
             } else if (ast->tokenKind == LiteralString::SINGLE) {
@@ -1586,10 +1863,10 @@ class FixIndentation {
                 ast->blockIndent = std::string(indent.base + opts.indent, ' ');
                 ast->blockTermIndent = std::string(indent.base, ' ');
                 column = indent.base;  // blockTermIndent
-                column += 3;  // "|||"
+                column += 3;           // "|||"
             } else if (ast->tokenKind == LiteralString::VERBATIM_SINGLE) {
                 column += 3;  // Include @, start and end quotes
-                for (const char32_t *cp = ast->value.c_str() ; *cp != U'\0' ; ++cp) {
+                for (const char32_t *cp = ast->value.c_str(); *cp != U'\0'; ++cp) {
                     if (*cp == U'\'') {
                         column += 2;
                     } else {
@@ -1598,7 +1875,7 @@ class FixIndentation {
                 }
             } else if (ast->tokenKind == LiteralString::VERBATIM_DOUBLE) {
                 column += 3;  // Include @, start and end quotes
-                for (const char32_t *cp = ast->value.c_str() ; *cp != U'\0' ; ++cp) {
+                for (const char32_t *cp = ast->value.c_str(); *cp != U'\0'; ++cp) {
                     if (*cp == U'"') {
                         column += 2;
                     } else {
@@ -1607,26 +1884,29 @@ class FixIndentation {
                 }
             }
 
-        } else if (dynamic_cast<LiteralNull*>(ast_)) {
+        } else if (dynamic_cast<LiteralNull *>(ast_)) {
             column += 4;  // null
 
-        } else if (auto *ast = dynamic_cast<Object*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Object *>(ast_)) {
             column++;  // '{'
             const Fodder &first_fodder = ast->fields.size() == 0
-                                         ? ast->closeFodder
-                                         : ast->fields[0].kind == ObjectField::FIELD_STR
-                                           ? open_fodder(ast->fields[0].expr1)
-                                           : ast->fields[0].fodder1;
-            Indent new_indent = newIndent(first_fodder, indent,
-                                          column + (opts.padObjects ? 1 : 0));
+                                             ? ast->closeFodder
+                                             : ast->fields[0].kind == ObjectField::FIELD_STR
+                                                   ? open_fodder(ast->fields[0].expr1)
+                                                   : ast->fields[0].fodder1;
+            Indent new_indent = newIndent(first_fodder, indent, column + (opts.padObjects ? 1 : 0));
 
             fields(ast->fields, new_indent, opts.padObjects);
-            if (ast->trailingComma) column++;
-            fill(ast->closeFodder, ast->fields.size() > 0, opts.padObjects,
-                 new_indent.lineUp, indent.base);
+            if (ast->trailingComma)
+                column++;
+            fill(ast->closeFodder,
+                 ast->fields.size() > 0,
+                 opts.padObjects,
+                 new_indent.lineUp,
+                 indent.base);
             column++;  // '}'
 
-        } else if (auto *ast = dynamic_cast<DesugaredObject*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<DesugaredObject *>(ast_)) {
             // No fodder but need to recurse and maintain column counter.
             column++;  // '{'
             for (AST *assert : ast->asserts) {
@@ -1647,24 +1927,25 @@ class FixIndentation {
             }
             column++;  // '}'
 
-        } else if (auto *ast = dynamic_cast<ObjectComprehension*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<ObjectComprehension *>(ast_)) {
             column++;  // '{'
             unsigned start_column = column;
             const Fodder &first_fodder = ast->fields.size() == 0
-                                         ? ast->closeFodder
-                                         : ast->fields[0].kind == ObjectField::FIELD_STR
-                                           ? open_fodder(ast->fields[0].expr1)
-                                           : ast->fields[0].fodder1;
-            Indent new_indent = newIndent(first_fodder, indent,
-                                          start_column + (opts.padObjects ? 1 : 0));
+                                             ? ast->closeFodder
+                                             : ast->fields[0].kind == ObjectField::FIELD_STR
+                                                   ? open_fodder(ast->fields[0].expr1)
+                                                   : ast->fields[0].fodder1;
+            Indent new_indent =
+                newIndent(first_fodder, indent, start_column + (opts.padObjects ? 1 : 0));
 
             fields(ast->fields, new_indent, opts.padObjects);
-            if (ast->trailingComma) column++;  // ','
+            if (ast->trailingComma)
+                column++;  // ','
             specs(ast->specs, new_indent);
             fill(ast->closeFodder, true, opts.padObjects, new_indent.lineUp, indent.base);
             column++;  // '}'
 
-        } else if (auto *ast = dynamic_cast<ObjectComprehensionSimple*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<ObjectComprehensionSimple *>(ast_)) {
             column++;  // '{'
             column++;  // '['
             expr(ast->field, indent, false);
@@ -1677,17 +1958,17 @@ class FixIndentation {
             expr(ast->array, indent, true);
             column++;  // '}'
 
-        } else if (auto *ast = dynamic_cast<Parens*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Parens *>(ast_)) {
             column++;  // (
             Indent new_indent = newIndentStrong(open_fodder(ast->expr), indent, column);
             expr(ast->expr, new_indent, false);
             fill(ast->closeFodder, false, false, new_indent.lineUp, indent.base);
             column++;  // )
 
-        } else if (dynamic_cast<const Self*>(ast_)) {
+        } else if (dynamic_cast<const Self *>(ast_)) {
             column += 4;  // self
 
-        } else if (auto *ast = dynamic_cast<SuperIndex*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<SuperIndex *>(ast_)) {
             column += 5;  // super
             fill(ast->dotFodder, false, false, indent.lineUp);
             if (ast->id != nullptr) {
@@ -1703,18 +1984,21 @@ class FixIndentation {
                 column++;  // "]";
             }
 
-        } else if (auto *ast = dynamic_cast<Unary*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Unary *>(ast_)) {
             column += uop_string(ast->op).length();
             Indent new_indent = newIndent(open_fodder(ast->expr), indent, column);
-            expr(ast->expr, new_indent, false);
+            if (dynamic_cast<const Dollar *>(left_recursive_deep(ast->expr))) {
+                expr(ast->expr, new_indent, true);
+            } else {
+                expr(ast->expr, new_indent, false);
+            }
 
-        } else if (auto *ast = dynamic_cast<Var*>(ast_)) {
+        } else if (auto *ast = dynamic_cast<Var *>(ast_)) {
             column += ast->id->name.length();
 
         } else {
             std::cerr << "INTERNAL ERROR: Unknown AST: " << ast_ << std::endl;
             std::abort();
-
         }
     }
     virtual void file(AST *body, Fodder &final_fodder)
@@ -1724,19 +2008,263 @@ class FixIndentation {
     }
 };
 
+/** Sort top-level imports.
+ *
+ * Top-level imports are `local x = import 'xxx.jsonnet` expressions
+ * that go before anything else in the file (more precisely all such imports
+ * that are either the root of AST or a direct child (body) of a top-level
+ * import.
+ *
+ * Grouping of imports is preserved. Groups of imports are separated by blank
+ * lines or lines containing comments.
+ */
+class SortImports {
+    /// Internal representation of an import
+    struct ImportElem {
+        ImportElem(UString key, Fodder adjacentFodder, Local::Bind bind)
+            : key(key), adjacentFodder(adjacentFodder), bind(bind)
+        {
+        }
 
+        // A key by which the imports should be sorted.
+        // It's a file path that is imported, represented as UTF-32 codepoints without case folding.
+        // In particular "Z" < "a", because 'Z' == 90 and 'a' == 97.
+        UString key;
 
-// TODO(dcunnin): Add pass to alphabeticize top level imports.
+        // Comments adjacent to the import that go after it and that should stay attached
+        // when imports are reordered.
+        Fodder adjacentFodder;
 
+        // The bind that contains the import
+        // Satisfies: bind.functionSugar == false && bind.body->type == AST_IMPORT
+        Local::Bind bind;
+        bool operator<(const ImportElem &elem) const
+        {
+            return key < elem.key;
+        }
+    };
+
+    typedef std::vector<ImportElem> ImportElems;
+
+    Allocator &alloc;
+
+   public:
+    SortImports(Allocator &alloc) : alloc(alloc) {}
+
+    /// Get the value by which the imports should be sorted.
+    UString sortingKey(Import *import)
+    {
+        return import->file->value;
+    }
+
+    /// Check if `local` expression is used for importing,
+    bool isGoodLocal(Local *local)
+    {
+        for (const auto &bind : local->binds) {
+            if (bind.body->type != AST_IMPORT || bind.functionSugar) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    Local *goodLocalOrNull(AST *expr)
+    {
+        if (auto *local = dynamic_cast<Local *>(expr)) {
+            return isGoodLocal(local) ? local : nullptr;
+        } else {
+            return nullptr;
+        }
+    }
+
+    /** Split fodder after the first new line / paragraph fodder,
+     * leaving blank lines after the newline in the second half.
+     *
+     * The two returned fodders can be concatenated using concat_fodder to get the original fodder.
+     *
+     * It's a heuristic that given two consecutive tokens `prev_token`, `next_token`
+     * with some fodder between them, decides which part of the fodder logically belongs
+     * to `prev_token` and which part belongs to the `next_token`.
+     *
+     * Example:
+     * prev_token // prev_token is awesome!
+     *
+     * // blah blah
+     * next_token
+     *
+     * In such case "// prev_token is awesome!\n" part of the fodder belongs
+     * to the `prev_token` and "\n//blah blah\n" to the `next_token`.
+     */
+    std::pair<Fodder, Fodder> splitFodder(const Fodder &fodder)
+    {
+        Fodder afterPrev, beforeNext;
+        bool inSecondPart = false;
+        for (const auto &fodderElem : fodder) {
+            if (inSecondPart) {
+                fodder_push_back(beforeNext, fodderElem);
+            } else {
+                afterPrev.push_back(fodderElem);
+            }
+            if (fodderElem.kind != FodderElement::Kind::INTERSTITIAL && !inSecondPart) {
+                inSecondPart = true;
+                if (fodderElem.blanks > 0) {
+                    // If there are any blank lines at the end of afterPrev, move them
+                    // to beforeNext.
+                    afterPrev.back().blanks = 0;
+                    assert(beforeNext.empty());
+                    beforeNext.emplace_back(FodderElement::Kind::LINE_END,
+                                            fodderElem.blanks,
+                                            fodderElem.indent,
+                                            std::vector<std::string>());
+                }
+            }
+        }
+        return {afterPrev, beforeNext};
+    }
+
+    void sortGroup(ImportElems &imports)
+    {
+        // We don't want to change behaviour in such case:
+        // local foo = "b.jsonnet";
+        // local foo = "a.jsonnet";
+        // So we don't change the order when there are shadowed variables.
+        if (!duplicatedVariables(imports)) {
+            std::sort(imports.begin(), imports.end());
+        }
+    }
+
+    ImportElems extractImportElems(const Local::Binds &binds, Fodder after)
+    {
+        ImportElems result;
+        Fodder before = binds.front().varFodder;
+        for (int i = 0; i < int(binds.size()); ++i) {
+            const auto &bind = binds[i];
+            bool last = i == int(binds.size() - 1);
+            Fodder adjacent, beforeNext;
+            if (!last) {
+                auto &next = binds[i + 1];
+                std::tie(adjacent, beforeNext) = splitFodder(next.varFodder);
+            } else {
+                adjacent = after;
+            }
+            ensureCleanNewline(adjacent);
+            Local::Bind newBind = bind;
+            newBind.varFodder = before;
+            Import *import = dynamic_cast<Import *>(bind.body);
+            assert(import != nullptr);
+            result.emplace_back(sortingKey(import), adjacent, newBind);
+            before = beforeNext;
+        }
+        return result;
+    }
+
+    AST *buildGroupAST(ImportElems &imports, AST *body, const Fodder &groupOpenFodder)
+    {
+        for (int i = imports.size() - 1; i >= 0; --i) {
+            auto &import = imports[i];
+            Fodder fodder;
+            if (i == 0) {
+                fodder = groupOpenFodder;
+            } else {
+                fodder = imports[i - 1].adjacentFodder;
+            }
+            auto *local =
+                alloc.make<Local>(LocationRange(), fodder, Local::Binds({import.bind}), body);
+            body = local;
+        }
+
+        return body;
+    }
+
+    bool duplicatedVariables(const ImportElems &elems)
+    {
+        std::set<UString> idents;
+        for (const auto &elem : elems) {
+            idents.insert(elem.bind.var->name);
+        }
+        return idents.size() < elems.size();
+    }
+
+    /// Check if the import group ends after this local
+    bool groupEndsAfter(Local *local)
+    {
+        Local *next = goodLocalOrNull(local->body);
+        if (!next) {
+            return true;
+        }
+
+        bool newlineReached = false;
+        for (const auto &fodderElem : open_fodder(next)) {
+            if (newlineReached || fodderElem.blanks > 0) {
+                return true;
+            }
+            if (fodderElem.kind != FodderElement::Kind::INTERSTITIAL) {
+                newlineReached = true;
+            }
+        }
+        return false;
+    }
+
+    AST *toplevelImport(Local *local, ImportElems &imports, const Fodder &groupOpenFodder)
+    {
+        assert(isGoodLocal(local));
+
+        Fodder adjacentCommentFodder, beforeNextFodder;
+        std::tie(adjacentCommentFodder, beforeNextFodder) = splitFodder(open_fodder(local->body));
+
+        ensureCleanNewline(adjacentCommentFodder);
+
+        ImportElems newImports = extractImportElems(local->binds, adjacentCommentFodder);
+        imports.insert(imports.end(), newImports.begin(), newImports.end());
+
+        if (groupEndsAfter(local)) {
+            sortGroup(imports);
+
+            Fodder afterGroup = imports.back().adjacentFodder;
+            ensureCleanNewline(beforeNextFodder);
+            auto nextOpenFodder = concat_fodder(afterGroup, beforeNextFodder);
+
+            // Process the code after the current group:
+            AST *bodyAfterGroup;
+            Local *next = goodLocalOrNull(local->body);
+            if (next) {
+                // Another group of imports
+                ImportElems nextImports;
+                bodyAfterGroup = toplevelImport(next, nextImports, nextOpenFodder);
+            } else {
+                // Something else
+                bodyAfterGroup = local->body;
+                open_fodder(bodyAfterGroup) = nextOpenFodder;
+            }
+
+            return buildGroupAST(imports, bodyAfterGroup, groupOpenFodder);
+        } else {
+            assert(beforeNextFodder.empty());
+            return toplevelImport(dynamic_cast<Local *>(local->body), imports, groupOpenFodder);
+        }
+    }
+
+    void file(AST *&body)
+    {
+        ImportElems imports;
+        Local *local = goodLocalOrNull(body);
+        if (local) {
+            body = toplevelImport(local, imports, open_fodder(local));
+        }
+    }
+};
 
 std::string jsonnet_fmt(AST *ast, Fodder &final_fodder, const FmtOpts &opts)
 {
     Allocator alloc;
 
     // Passes to enforce style on the AST.
+    if (opts.sortImports)
+        SortImports(alloc).file(ast);
     remove_initial_newlines(ast);
     if (opts.maxBlankLines > 0)
         EnforceMaximumBlankLines(alloc, opts).file(ast, final_fodder);
+    FixNewlines(alloc, opts).file(ast, final_fodder);
     FixTrailingCommas(alloc, opts).file(ast, final_fodder);
     FixParens(alloc, opts).file(ast, final_fodder);
     FixPlusObject(alloc, opts).file(ast, final_fodder);

@@ -48,7 +48,7 @@ func check(t *testing.T, err error, a, b string) {
 func Test_Simple(t *testing.T) {
 
 	// Each time there's a new version, this will force an update to this code.
-	check(t, nil, Version(), `v0.9.4`)
+	check(t, nil, Version(), `v0.10.0`)
 
 	vm := Make()
 	defer vm.Destroy()
@@ -134,11 +134,7 @@ func Test_FormatFile(t *testing.T) {
 	defer vm.Destroy()
 	result, err := vm.FormatFile(filename)
 
-	check(t, err, result, `{
-    quoted: "keys",
-    notevaluated: 20 + 22,
-    trailing: "comma" }
-`)
+	check(t, err, result, "{\n  quoted: 'keys',\n  notevaluated: 20 + 22,\n  trailing: 'comma',\n}\n")
 }
 
 func Test_FormatSnippet(t *testing.T) {
@@ -152,11 +148,7 @@ func Test_FormatSnippet(t *testing.T) {
 	defer vm.Destroy()
 	result, err := vm.FormatSnippet("testfoo", data)
 
-	check(t, err, result, `{
-    quoted: "keys",
-    notevaluated: 20 + 22,
-    trailing: "comma" }
-`)
+	check(t, err, result, "{\n  quoted: 'keys',\n  notevaluated: 20 + 22,\n  trailing: 'comma',\n}\n")
 }
 
 func Test_FormatIndent(t *testing.T) {
@@ -171,11 +163,7 @@ func Test_FormatIndent(t *testing.T) {
 	vm.FormatIndent(1)
 	result, err := vm.FormatSnippet("testfoo", data)
 
-	check(t, err, result, `{
- quoted: "keys",
- notevaluated: 20 + 22,
- trailing: "comma" }
-`)
+	check(t, err, result, "{\n quoted: 'keys',\n notevaluated: 20 + 22,\n trailing: 'comma',\n}\n")
 }
 
 func TestJsonString(t *testing.T) {
