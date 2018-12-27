@@ -6,7 +6,7 @@ Everything in libjsonnet.h is covered except the multi-file evaluators.
 
 See jsonnet_test.go for how to use it.
 
-## Quick example:
+## Quick example in golang:
 
         vm := jsonnet.Make()
         vm.ExtVar("color", "purple")
@@ -21,6 +21,43 @@ See jsonnet_test.go for how to use it.
         }
 
         vm.Destroy()
+
+## Quick examples with the command line demo program:
+
+```
+$ ( cd jsonnet_main/  ; go  build -x -a )
+...
+mv $WORK/b001/exe/a.out jsonnet_main
+...
+$ echo "{ a: 1, b: 2 }"  | jsonnet_main/jsonnet_main /dev/stdin
+{
+   "a": 1,
+   "b": 2
+}
+$ cat test1.j
+{
+  shell: "/bin/sh",
+  awk: "/usr/bin/awk",
+}
+$ jsonnet_main/jsonnet_main test1.j
+{
+   "awk": "/usr/bin/awk",
+   "shell": "/bin/sh"
+}
+$ cat test2.j
+local test1 = import "test1.j";
+
+test1 {
+  shell: "/bin/csh",
+}
+$ jsonnet_main/jsonnet_main test2.j
+{
+   "awk": "/usr/bin/awk",
+   "shell": "/bin/csh"
+}
+$ echo ' std.extVar("a") + "bar" ' | jsonnet_main/jsonnet_main /dev/stdin a=foo
+"foobar"
+```
 
 ## LICENSES
 
