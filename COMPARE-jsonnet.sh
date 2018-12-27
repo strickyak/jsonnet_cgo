@@ -45,10 +45,12 @@ for x in \
 	formatter.cpp \
 	formatter.h \
 	json.h \
+	json.hpp \
 	lexer.cpp \
 	lexer.h \
 	libjsonnet.cpp \
 	libjsonnet.h \
+	libjsonnet_fmt.h \
 	md5.cpp \
 	md5.h \
 	parser.cpp \
@@ -69,7 +71,7 @@ for x in \
 do
 	ok=false
 	F=
-	for subdir in core cpp third_party/md5 include
+	for subdir in core cpp third_party/md5 third_party/json include
 	do
 		test -f "$J/$subdir/$x" && F="$J/$subdir/$x"
 		if cmp "$J/$subdir/$x" "./$x" 2>/dev/null

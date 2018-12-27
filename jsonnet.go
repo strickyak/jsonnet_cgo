@@ -14,6 +14,7 @@ package jsonnet
 #include <stdio.h>
 #include <stdlib.h>
 #include <libjsonnet.h>
+#include <libjsonnet_fmt.h>
 
 char *CallImport_cgo(void *ctx, const char *base, const char *rel, char **found_here, int *success);
 struct JsonnetJsonValue *CallNative_cgo(void *ctx, const struct JsonnetJsonValue *const *argv, int *success);
